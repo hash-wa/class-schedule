@@ -1,12 +1,12 @@
-import { Copy, Moon, Pencil, Plus, Settings, Sun, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Copy, LogOut, Pencil, Plus, Settings, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { dataApi } from '../data'
+import { dataApi, usingLocalStore } from '../data'
 import { useAuth } from '../hooks/useAuth'
-import { useTheme } from '../hooks/useTheme'
 import { DEFAULT_CLASS_EVENT_LABELS } from '../lib/classEventLabels'
 import { resolveCourseAbbreviation, resolveSideMenuName } from '../lib/courseAbbreviation'
 import { remapClassEventDates } from '../lib/scheduleEngine'
+import { resolveCourseSlug, resolveSemesterSlug } from '../lib/slug'
 import { WEEKDAY_ORDER, resolveTerm } from '../types'
 import type { Course, Semester, Term, Weekday } from '../types'
 import { IconButton } from './IconButton'
@@ -19,11 +19,10 @@ const SELECTED_SEMESTER_KEY = 'class-schedule-sidemenu-semester'
 const NEW_COURSE_VALUE = '__new__'
 
 export function SideMenu() {
-  const params = useParams<{ courseId?: string; termId?: string; semesterId?: string }>()
+  const params = useParams<{ semesterSlug?: string; courseSlug?: string }>()
   const location = useLocation()
   const navigate = useNavigate()
-  const { isEditor } = useAuth()
-  const { theme, toggleTheme } = useTheme()
+  const { user, isEditor, signOut } = useAuth()
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1')
   const [semesters, setSemesters] = useState<Semester[]>([])
   const [courses, setCourses] = useState<Course[]>([])
@@ -62,26 +61,23 @@ export function SideMenu() {
   // course's own semester.
   useEffect(() => {
     if (!loaded) return
-    if (params.semesterId) {
-      selectSemester(params.semesterId)
-      return
-    }
-    if (params.termId && params.courseId) {
-      const match = terms.find((t) => t.id === params.termId && t.courseId === params.courseId)
-      if (match) {
-        selectSemester(match.semesterId)
+    if (params.semesterSlug) {
+      const routeSemester = semesters.find((s) => resolveSemesterSlug(s) === params.semesterSlug)
+      if (routeSemester) {
+        selectSemester(routeSemester.id)
         return
       }
     }
-    // No route-derived semester (e.g. the Dashboard) — leave a still-valid manual pick
-    // alone; only reset when the list changes out from under it (deleted, or empty).
+    // No route-derived semester (e.g. the Dashboard, or a slug that no longer
+    // resolves) — leave a still-valid manual pick alone; only reset when the list
+    // changes out from under it (deleted, or empty).
     setSelectedSemesterId((prev) => {
       const fallback = semesters.length > 0 ? semesters[semesters.length - 1].id : ''
       const next = prev && semesters.some((s) => s.id === prev) ? prev : fallback
       localStorage.setItem(SELECTED_SEMESTER_KEY, next)
       return next
     })
-  }, [loaded, params.semesterId, params.termId, params.courseId, terms, semesters])
+  }, [loaded, params.semesterSlug, semesters])
 
   function toggleCollapsed() {
     setCollapsed((was) => {
@@ -91,19 +87,27 @@ export function SideMenu() {
     })
   }
 
+  // What the current route actually points at, resolved from its slugs — used both to
+  // highlight the active row and to decide whether a delete should navigate away.
+  const routeSemester = params.semesterSlug ? semesters.find((s) => resolveSemesterSlug(s) === params.semesterSlug) : undefined
+  const routeCourse = params.courseSlug ? courses.find((c) => resolveCourseSlug(c) === params.courseSlug) : undefined
+  const routeTerm =
+    routeSemester && routeCourse ? terms.find((t) => t.semesterId === routeSemester.id && t.courseId === routeCourse.id) : undefined
+  const selectedSemester = semesters.find((s) => s.id === selectedSemesterId)
+
   async function handleDeleteSemester() {
-    const semester = semesters.find((s) => s.id === selectedSemesterId)
+    const semester = selectedSemester
     if (!semester) return
     if (!confirm(`Delete "${semester.label}" and every course schedule under it? This can't be undone.`)) return
     await dataApi.deleteSemester(semester.id)
-    if (params.semesterId === semester.id || params.courseId) navigate('/')
+    if (routeSemester?.id === semester.id) navigate('/')
     await refresh()
   }
 
   async function handleDeleteTerm(term: Term, course: Course | undefined) {
     if (!confirm(`Delete the ${course?.code ?? 'course'} schedule? This can't be undone.`)) return
     await dataApi.deleteTerm(term.courseId, term.id)
-    if (params.termId === term.id) navigate('/')
+    if (routeTerm?.id === term.id) navigate('/')
     await refresh()
   }
 
@@ -125,19 +129,21 @@ export function SideMenu() {
                 icon={<span className="side-menu-course-initials">{resolveCourseAbbreviation(course)}</span>}
                 label={resolveSideMenuName(course)}
                 tooltipSide="right"
-                to={`/c/${course.id}/${term.id}`}
-                variant={params.courseId === course.id && params.termId === term.id ? 'primary' : undefined}
+                to={selectedSemester ? `/${resolveSemesterSlug(selectedSemester)}/${resolveCourseSlug(course)}` : '#'}
+                variant={routeTerm?.id === term.id ? 'primary' : undefined}
               />
             ))}
           </div>
         )}
-        <IconButton
-          className="side-menu-theme-toggle"
-          icon={theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          tooltipSide="right"
-          onClick={toggleTheme}
-        />
+        {!usingLocalStore && (
+          <IconButton
+            className="side-menu-signout"
+            icon={<LogOut size={18} />}
+            label="Sign out"
+            tooltipSide="right"
+            onClick={() => void signOut()}
+          />
+        )}
       </div>
     )
   }
@@ -161,13 +167,13 @@ export function SideMenu() {
             />
           )}
           <div className="side-menu-row-actions">
-            {isEditor && selectedSemesterId && (
+            {isEditor && selectedSemester && (
               <>
                 <IconButton
                   className="side-menu-hover-action"
                   icon={<Pencil size={13} />}
                   label="Edit semester"
-                  to={`/semester/${selectedSemesterId}/edit`}
+                  to={`/${resolveSemesterSlug(selectedSemester)}/edit`}
                 />
                 <IconButton
                   className="side-menu-hover-action"
@@ -186,7 +192,7 @@ export function SideMenu() {
             // Whatever's currently on screen (a course's schedule, or the semester
             // editor) belongs to the semester being switched away from — drop back to
             // the dashboard rather than leaving it up while the sidebar points elsewhere.
-            if (params.courseId || params.semesterId) navigate('/')
+            if (params.semesterSlug) navigate('/')
             e.target.blur()
           }}
           disabled={semesters.length === 0}
@@ -217,11 +223,13 @@ export function SideMenu() {
             <p className="side-menu-hint">No course schedules yet.</p>
           )}
           {coursesInSemester.map(({ term, course }) => {
-            const active = params.courseId === course.id && params.termId === term.id
+            const active = routeTerm?.id === term.id
+            const semesterSlug = selectedSemester ? resolveSemesterSlug(selectedSemester) : undefined
+            const courseSlug = resolveCourseSlug(course)
             return (
               <div key={term.id} className={'side-menu-course-row' + (active ? ' side-menu-course-row--active' : '')}>
                 <Link
-                  to={`/c/${course.id}/${term.id}`}
+                  to={semesterSlug ? `/${semesterSlug}/${courseSlug}` : '#'}
                   className="side-menu-course"
                   title={resolveSideMenuName(course)}
                   onClick={(e) => e.currentTarget.blur()}
@@ -234,7 +242,7 @@ export function SideMenu() {
                       className="side-menu-hover-action"
                       icon={<Settings size={13} />}
                       label="Edit settings"
-                      to={`/c/${course.id}/${term.id}/edit`}
+                      to={semesterSlug ? `/${semesterSlug}/${courseSlug}/edit` : '#'}
                     />
                     <IconButton
                       className="side-menu-hover-action"
@@ -256,15 +264,19 @@ export function SideMenu() {
         </div>
       </div>
 
-      <div className="side-menu-footer">
-        <IconButton
-          className="side-menu-compact-icon"
-          icon={theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
-          label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          onClick={toggleTheme}
-        />
-        <span className="side-menu-label-text">{theme === 'dark' ? 'Dark mode' : 'Light mode'}</span>
-      </div>
+      {!usingLocalStore && (
+        <div className="side-menu-footer">
+          <span className="side-menu-label-text" title={user?.email ?? undefined}>
+            {user?.email}
+          </span>
+          <IconButton
+            className="side-menu-compact-icon"
+            icon={<LogOut size={14} />}
+            label="Sign out"
+            onClick={() => void signOut()}
+          />
+        </div>
+      )}
 
       {showNewSemester && (
         <NewSemesterModal
@@ -295,11 +307,12 @@ export function SideMenu() {
           course={cloneTarget.course}
           semesters={semesters}
           onClose={() => setCloneTarget(null)}
-          onCloned={async (newTermId, targetSemesterId) => {
+          onCloned={async (targetSemesterId) => {
             setCloneTarget(null)
             await refresh()
             selectSemester(targetSemesterId)
-            navigate(`/c/${cloneTarget.course.id}/${newTermId}`)
+            const targetSemester = semesters.find((s) => s.id === targetSemesterId)
+            if (targetSemester) navigate(`/${resolveSemesterSlug(targetSemester)}/${resolveCourseSlug(cloneTarget.course)}`)
           }}
         />
       )}
@@ -450,7 +463,7 @@ function CloneScheduleModal({
   course: Course
   semesters: Semester[]
   onClose: () => void
-  onCloned: (newTermId: string, targetSemesterId: string) => void
+  onCloned: (targetSemesterId: string) => void
 }) {
   const defaultTarget = semesters.find((s) => s.id !== term.semesterId)?.id ?? semesters[0]?.id ?? ''
   const [targetSemesterId, setTargetSemesterId] = useState(defaultTarget)
@@ -466,9 +479,9 @@ function CloneScheduleModal({
       includeClassEvents && sourceSemester && targetSemester
         ? remapClassEventDates(term.classEvents, resolveTerm(term, sourceSemester), resolveTerm(term, targetSemester))
         : undefined
-    const newTermId = await dataApi.cloneTerm(term, targetSemesterId, { classEvents })
+    await dataApi.cloneTerm(term, targetSemesterId, { classEvents })
     setCloning(false)
-    onCloned(newTermId, targetSemesterId)
+    onCloned(targetSemesterId)
   }
 
   return (

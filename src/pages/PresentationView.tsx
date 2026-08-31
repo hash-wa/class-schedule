@@ -1,4 +1,4 @@
-import { Maximize2, Pencil, Printer, Settings, X } from 'lucide-react'
+import { Maximize2, Moon, Pencil, Printer, Settings, Sun, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FillHeight } from '../components/FillHeight'
@@ -10,6 +10,8 @@ import { ShortcutsHelp } from '../components/ShortcutsHelp'
 import { dataApi } from '../data'
 import { useAuth } from '../hooks/useAuth'
 import { useKeyboardShortcuts, type Shortcut } from '../hooks/useKeyboardShortcuts'
+import { useTheme } from '../hooks/useTheme'
+import { resolveCourseSlug, resolveSemesterSlug } from '../lib/slug'
 import { resolveTerm } from '../types'
 import type { ClassEvent, Course, ResolvedTerm, Semester, Term, Topic } from '../types'
 import './PresentationView.css'
@@ -57,9 +59,10 @@ const PRINT_THEME_VARS: Record<PrintTheme, string> = {
 const PRINT_CONTENT_HEIGHT_IN = { landscape: 7.9, portrait: 10.4 }
 
 export function PresentationView() {
-  const { courseId, termId } = useParams<{ courseId: string; termId: string }>()
+  const { semesterSlug, courseSlug } = useParams<{ semesterSlug: string; courseSlug: string }>()
   const navigate = useNavigate()
   const { isEditor } = useAuth()
+  const { theme, selectTheme } = useTheme()
   const [course, setCourse] = useState<Course | null>(null)
   const [term, setTerm] = useState<Term | null>(null)
   const [semester, setSemester] = useState<Semester | null>(null)
@@ -128,15 +131,18 @@ export function PresentationView() {
   }, [printTheme])
 
   useEffect(() => {
-    if (!courseId || !termId) return
+    if (!semesterSlug || !courseSlug) return
     void (async () => {
-      const [c, t] = await Promise.all([dataApi.getCourse(courseId), dataApi.getTerm(courseId, termId)])
-      if (!c || !t) {
+      const [semesters, courses] = await Promise.all([dataApi.listSemesters(), dataApi.listCourses()])
+      const s = semesters.find((sem) => resolveSemesterSlug(sem) === semesterSlug)
+      const c = courses.find((co) => resolveCourseSlug(co) === courseSlug)
+      if (!s || !c) {
         setNotFound(true)
         return
       }
-      const s = await dataApi.getSemester(t.semesterId)
-      if (!s) {
+      const terms = await dataApi.listTerms(c.id)
+      const t = terms.find((term) => term.semesterId === s.id)
+      if (!t) {
         setNotFound(true)
         return
       }
@@ -144,7 +150,7 @@ export function PresentationView() {
       setTerm(t)
       setSemester(s)
     })()
-  }, [courseId, termId])
+  }, [semesterSlug, courseSlug])
 
   const resolved = useMemo(() => (term && semester ? resolveTerm(term, semester) : null), [term, semester])
 
@@ -186,32 +192,36 @@ export function PresentationView() {
   }
 
   async function handleTopicsChange(topics: Topic[]) {
-    if (!courseId || !termId) return
+    if (!term) return
     setTerm((t) => (t ? { ...t, topics } : t))
-    await dataApi.updateTerm(courseId, termId, { topics })
+    await dataApi.updateTerm(term.courseId, term.id, { topics })
   }
 
   async function handleClassEventsChange(classEvents: ClassEvent[]) {
-    if (!courseId || !termId) return
+    if (!term) return
     setTerm((t) => (t ? { ...t, classEvents } : t))
-    await dataApi.updateTerm(courseId, termId, { classEvents })
+    await dataApi.updateTerm(term.courseId, term.id, { classEvents })
   }
 
   async function toggleLock() {
-    if (!courseId || !termId || !term) return
+    if (!term) return
     const locked = !term.locked
     setTerm((t) => (t ? { ...t, locked } : t))
-    await dataApi.updateTerm(courseId, termId, { locked })
+    await dataApi.updateTerm(term.courseId, term.id, { locked })
   }
+
+  const editPath = course && semester ? `/${resolveSemesterSlug(semester)}/${resolveCourseSlug(course)}/edit` : undefined
 
   const shortcuts: Shortcut[] = [
     { key: 'f', description: 'Toggle full screen', handler: toggleFullMode },
     { key: 'p', description: 'Print', handler: () => setShowPrintChoice(true) },
+    { key: 'd', description: 'Dark mode', handler: () => selectTheme('dark') },
+    { key: 'l', description: 'Light mode', handler: () => selectTheme('light') },
     { key: '?', description: 'Show keyboard shortcuts', handler: () => setShowHelp(true) },
-    ...(isEditor && term
+    ...(isEditor && term && editPath
       ? [
           { key: 'e', description: 'Edit schedule', handler: () => void toggleLock() },
-          { key: 's', description: 'Edit settings', handler: () => navigate(`/c/${courseId}/${termId}/edit`) },
+          { key: 's', description: 'Edit settings', handler: () => navigate(editPath) },
         ]
       : []),
   ]
@@ -293,9 +303,14 @@ export function PresentationView() {
               onClick={() => void toggleLock()}
             />
           )}
-          {isEditor && <IconButton icon={<Settings />} label="Edit settings" to={`/c/${courseId}/${termId}/edit`} />}
+          {isEditor && <IconButton icon={<Settings />} label="Edit settings" to={editPath ?? '#'} />}
           <IconButton icon={<Maximize2 />} label="Full screen" onClick={() => void enterFullMode()} />
           <IconButton icon={<Printer />} label="Print" onClick={() => setShowPrintChoice(true)} />
+          <IconButton
+            icon={theme === 'dark' ? <Sun /> : <Moon />}
+            label={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            onClick={() => selectTheme(theme === 'dark' ? 'light' : 'dark')}
+          />
         </div>
       </div>
       <div className="pv-grid-wrap">{gridArea}</div>

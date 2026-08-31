@@ -6,44 +6,56 @@ import { ShortcutsHelp } from '../components/ShortcutsHelp'
 import { dataApi } from '../data'
 import { useAuth } from '../hooks/useAuth'
 import { useKeyboardShortcuts, type Shortcut } from '../hooks/useKeyboardShortcuts'
+import { resolveCourseSlug, resolveSemesterSlug, slugify } from '../lib/slug'
 import type { CalendarException, Course, CollegeEvent, Semester, Term } from '../types'
 import '../styles/forms.css'
 import './Editor.css'
 
 export function SemesterEditor() {
-  const { semesterId } = useParams<{ semesterId: string }>()
+  const { semesterSlug } = useParams<{ semesterSlug: string }>()
   const { isEditor, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [semester, setSemester] = useState<Semester | null>(null)
   const [schedules, setSchedules] = useState<{ term: Term; course: Course | undefined }[]>([])
+  const [notFound, setNotFound] = useState(false)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
-    if (!semesterId) return
+    if (!semesterSlug) return
     void (async () => {
-      const [s, terms, courses] = await Promise.all([
-        dataApi.getSemester(semesterId),
+      const [semesters, terms, courses] = await Promise.all([
+        dataApi.listSemesters(),
         dataApi.listAllTerms(),
         dataApi.listCourses(),
       ])
+      const s = semesters.find((sem) => resolveSemesterSlug(sem) === semesterSlug)
+      if (!s) {
+        setNotFound(true)
+        return
+      }
       setSemester(s)
       setSchedules(
         terms
-          .filter((t) => t.semesterId === semesterId)
+          .filter((t) => t.semesterId === s.id)
           .map((term) => ({ term, course: courses.find((c) => c.id === term.courseId) })),
       )
     })()
-  }, [semesterId])
+  }, [semesterSlug])
 
   async function handleSave() {
-    if (!semesterId || !semester) return
+    if (!semester) return
     setSaving(true)
     const { id: _id, ...data } = semester
-    await dataApi.updateSemester(semesterId, data)
+    await dataApi.updateSemester(semester.id, data)
     setSaving(false)
     setDirty(false)
+    // The semester's slug (which every one of its courses' URLs is built from) may
+    // have just changed — update the address bar so it doesn't keep pointing at a
+    // URL that no longer resolves to this semester.
+    const newSlug = resolveSemesterSlug(semester)
+    if (newSlug !== semesterSlug) navigate(`/${newSlug}/edit`, { replace: true })
   }
 
   function update(patch: Partial<Semester>) {
@@ -74,6 +86,7 @@ export function SemesterEditor() {
 
   if (authLoading) return null
   if (!isEditor) return <p>You need to sign in as the schedule owner to edit.</p>
+  if (notFound) return <p>Semester not found.</p>
   if (!semester) return <p>Loading…</p>
 
   return (
@@ -117,8 +130,12 @@ export function SemesterEditor() {
             {schedules.map(({ term, course }) => (
               <li key={term.id}>
                 <span className="period-list-text">{course?.code ?? 'Unknown course'}</span>
-                <Link to={`/c/${term.courseId}/${term.id}`}>View</Link>
-                <Link to={`/c/${term.courseId}/${term.id}/edit`}>Edit</Link>
+                {course && (
+                  <>
+                    <Link to={`/${resolveSemesterSlug(semester)}/${resolveCourseSlug(course)}`}>View</Link>
+                    <Link to={`/${resolveSemesterSlug(semester)}/${resolveCourseSlug(course)}/edit`}>Edit</Link>
+                  </>
+                )}
               </li>
             ))}
           </ul>
@@ -145,6 +162,17 @@ function SemesterSettings({ semester, onChange }: { semester: Semester; onChange
         <label>
           End date
           <input type="date" value={semester.endDate} onChange={(e) => onChange({ endDate: e.target.value })} />
+        </label>
+        <label>
+          URL slug
+          <input
+            value={semester.urlSlug ?? ''}
+            placeholder={slugify(semester.label)}
+            onChange={(e) => onChange({ urlSlug: slugify(e.target.value) })}
+          />
+          <span className="field-hint">
+            The semester part of every course's web address: /{semester.urlSlug?.trim() ? slugify(semester.urlSlug) : slugify(semester.label)}/…
+          </span>
         </label>
       </div>
     </section>

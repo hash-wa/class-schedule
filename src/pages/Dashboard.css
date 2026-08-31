@@ -7,3 +7,9 @@
 .dashboard .btn-primary {
   margin-top: 12px;
 }
+
+.dashboard-error {
+  color: #dc2626;
+  font-size: 0.9rem;
+  margin-top: 10px;
+}

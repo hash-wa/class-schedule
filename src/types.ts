@@ -23,6 +23,8 @@ export interface Course {
    * nickname distinct from the official code printed on the schedule itself. Defaults to
    * `code` when unset. */
   sideMenuName?: string
+  /** The `/…/<this>` segment of a schedule's URL. Defaults to a slugified `code` when unset. */
+  urlSlug?: string
 }
 
 /** 'due' chips render filled (solid gradient) to draw attention; 'up' chips render outlined only. */
@@ -129,6 +131,8 @@ export interface Semester {
   endDate: string // ISO yyyy-mm-dd, last possible meeting date
   exceptions: CalendarException[]
   collegeEvents: CollegeEvent[]
+  /** The `/<this>/…` segment of a schedule's URL. Defaults to a slugified `label` when unset. */
+  urlSlug?: string
 }
 
 /** One course's schedule within a semester. Multiple Terms can reference the same Semester. */

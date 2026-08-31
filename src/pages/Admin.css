@@ -1,0 +1,14 @@
+.admin-page {
+  max-width: 480px;
+  margin: 60px auto 0;
+  text-align: center;
+}
+
+.admin-page h1 {
+  font-size: 1.3rem;
+  margin-bottom: 8px;
+}
+
+.admin-page .section-hint {
+  margin-bottom: 16px;
+}

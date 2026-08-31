@@ -11,42 +11,13 @@
 .layout-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 12px 20px;
-  border-bottom: 1px solid var(--border);
-  position: relative;
-}
-
-.layout-header::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
-  background: var(--gradient-brand);
-}
-
-.layout-brand {
-  font-weight: 800;
-  font-size: 1.15rem;
-  text-decoration: none;
-}
-
-.layout-auth {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 0.9rem;
 }
 
 .layout-local-badge {
   color: var(--text-muted);
   font-size: 0.85rem;
-}
-
-.layout-user {
-  color: var(--text-muted);
 }
 
 .layout-body {

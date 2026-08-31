@@ -72,12 +72,6 @@ button.icon-btn.editor-edit-btn--active:hover {
   border-image: var(--gradient-brand) 1;
 }
 
-.section-hint {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  margin: 0 0 10px;
-}
-
 .editor-empty-hint {
   font-style: italic;
 }

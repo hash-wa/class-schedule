@@ -16,6 +16,16 @@ service cloud.firestore {
       }
     }
 
+    // listAllTerms()/deleteSemester() query across every course's terms subcollection
+    // at once via collectionGroup(db, 'terms') — Firestore requires a separate,
+    // top-level rule for that access pattern; the nested rule above only covers
+    // direct courses/{courseId}/terms/{termId} path reads/writes, not collection-group
+    // queries spanning every course. Writes still go through specific document paths,
+    // so they're already covered by the nested rule above — this only needs read.
+    match /{path=**}/terms/{termId} {
+      allow read: if true;
+    }
+
     // Shared academic calendar (dates, holidays, college events) for a term across
     // every course schedule that references it.
     match /semesters/{semesterId} {

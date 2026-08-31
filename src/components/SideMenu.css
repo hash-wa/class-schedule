@@ -170,11 +170,18 @@
   margin-top: auto;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.side-menu-theme-toggle.icon-btn {
+.side-menu-footer .side-menu-label-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-menu-signout.icon-btn {
   margin-top: auto;
 }

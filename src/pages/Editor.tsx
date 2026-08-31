@@ -8,47 +8,68 @@ import { useAuth } from '../hooks/useAuth'
 import { useKeyboardShortcuts, type Shortcut } from '../hooks/useKeyboardShortcuts'
 import { autoCourseInitials, sanitizeCourseAbbreviation } from '../lib/courseAbbreviation'
 import { sanitizeSessionLabelLetter } from '../lib/sessionLabel'
+import { resolveCourseSlug, resolveSemesterSlug, slugify } from '../lib/slug'
 import { WEEKDAY_ORDER } from '../types'
 import type { ClassEventLabel, Course, LinkBase, Semester, Term, Weekday } from '../types'
 import '../styles/forms.css'
 import './Editor.css'
 
 export function Editor() {
-  const { courseId, termId } = useParams<{ courseId: string; termId: string }>()
+  const { semesterSlug, courseSlug } = useParams<{ semesterSlug: string; courseSlug: string }>()
   const { isEditor, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [course, setCourse] = useState<Course | null>(null)
   const [term, setTerm] = useState<Term | null>(null)
   const [semester, setSemester] = useState<Semester | null>(null)
+  const [notFound, setNotFound] = useState(false)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
-    if (!courseId || !termId) return
+    if (!semesterSlug || !courseSlug) return
     void (async () => {
-      const [c, t] = await Promise.all([dataApi.getCourse(courseId), dataApi.getTerm(courseId, termId)])
-      if (!c || !t) return
-      const s = await dataApi.getSemester(t.semesterId)
+      const [semesters, courses] = await Promise.all([dataApi.listSemesters(), dataApi.listCourses()])
+      const s = semesters.find((sem) => resolveSemesterSlug(sem) === semesterSlug)
+      const c = courses.find((co) => resolveCourseSlug(co) === courseSlug)
+      if (!s || !c) {
+        setNotFound(true)
+        return
+      }
+      const terms = await dataApi.listTerms(c.id)
+      const t = terms.find((term) => term.semesterId === s.id)
+      if (!t) {
+        setNotFound(true)
+        return
+      }
       setCourse(c)
       setTerm(t)
       setSemester(s)
     })()
-  }, [courseId, termId])
+  }, [semesterSlug, courseSlug])
 
   async function handleSave() {
-    if (!courseId || !termId || !term || !course) return
+    if (!term || !course || !semester) return
     setSaving(true)
     const { id: _id, courseId: _courseId, ...data } = term
     await Promise.all([
-      dataApi.replaceTerm(courseId, termId, data),
-      dataApi.updateCourse(courseId, {
+      dataApi.replaceTerm(term.courseId, term.id, data),
+      dataApi.updateCourse(course.id, {
         sidebarAbbreviation: course.sidebarAbbreviation ?? '',
         sideMenuName: course.sideMenuName ?? '',
+        urlSlug: course.urlSlug ?? '',
       }),
     ])
     setSaving(false)
     setDirty(false)
+    // The course's slug (which the URL is built from) may have just changed —
+    // update the address bar to match so it doesn't keep pointing at a URL that no
+    // longer resolves to this schedule (View schedule, refresh, bookmarks, etc.).
+    const newSemesterSlug = resolveSemesterSlug(semester)
+    const newCourseSlug = resolveCourseSlug(course)
+    if (newSemesterSlug !== semesterSlug || newCourseSlug !== courseSlug) {
+      navigate(`/${newSemesterSlug}/${newCourseSlug}/edit`, { replace: true })
+    }
   }
 
   function update(patch: Partial<Term>) {
@@ -62,10 +83,10 @@ export function Editor() {
   }
 
   async function toggleLock() {
-    if (!courseId || !termId || !term) return
+    if (!term) return
     const locked = !term.locked
     setTerm((t) => (t ? { ...t, locked } : t))
-    await dataApi.updateTerm(courseId, termId, { locked })
+    await dataApi.updateTerm(term.courseId, term.id, { locked })
   }
 
   useEffect(() => {
@@ -86,13 +107,14 @@ export function Editor() {
       },
     },
     { key: 'e', description: 'Edit settings', handler: () => void toggleLock() },
-    { key: 's', description: 'View schedule', handler: () => navigate(`/c/${courseId}/${termId}`) },
+    { key: 's', description: 'View schedule', handler: () => navigate(`/${semesterSlug}/${courseSlug}`) },
     { key: '?', description: 'Show keyboard shortcuts', handler: () => setShowHelp(true) },
   ]
   useKeyboardShortcuts(shortcuts, !showHelp)
 
   if (authLoading) return null
   if (!isEditor) return <p>You need to sign in as the schedule owner to edit.</p>
+  if (notFound) return <p>Schedule not found.</p>
   if (!course || !term || !semester) return <p>Loading…</p>
 
   return (
@@ -108,7 +130,7 @@ export function Editor() {
             className={term.locked ? undefined : 'editor-edit-btn--active'}
             onClick={() => void toggleLock()}
           />
-          <IconButton icon={<CalendarDays />} label="View schedule" onClick={() => navigate(`/c/${courseId}/${termId}`)} />
+          <IconButton icon={<CalendarDays />} label="View schedule" onClick={() => navigate(`/${semesterSlug}/${courseSlug}`)} />
           <IconButton
             icon={saving ? <Loader2 className="icon-spin" /> : dirty ? <Save /> : <Check />}
             label={saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
@@ -234,6 +256,17 @@ function TermSettings({
               onChange={(e) => onCourseChange({ sidebarAbbreviation: sanitizeCourseAbbreviation(e.target.value) })}
             />
             <span className="field-hint">Up to 3 letters/numbers — shown in the collapsed side menu, shared by this course's schedules.</span>
+          </label>
+          <label>
+            URL slug
+            <input
+              value={course.urlSlug ?? ''}
+              placeholder={slugify(course.code)}
+              onChange={(e) => onCourseChange({ urlSlug: slugify(e.target.value) })}
+            />
+            <span className="field-hint">
+              The course part of this schedule's web address: /…/{course.urlSlug?.trim() ? slugify(course.urlSlug) : slugify(course.code)}
+            </span>
           </label>
           <label>
             Session number letter
