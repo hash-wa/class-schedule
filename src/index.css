@@ -7,7 +7,7 @@
   --border: #e5e7eb;
   /* Macalester College brand palette — https://www.macalester.edu/communications/macalester-brand-2/colors/ */
   --accent: #01426a; /* Mac Blue */
-  --accent-bg: rgba(1, 66, 106, 0.08);
+  --accent-bg: rgba(1, 66, 106, 0.28);
 
   --grad-1: #01426a; /* Mac Blue */
   --grad-2: #ffb500; /* Mac Gold */
@@ -51,7 +51,7 @@
   --bg-subtle: #1c1d24;
   --border: #2e303a;
   --accent: #72c5e7; /* Mac Sky Blue */
-  --accent-bg: rgba(114, 197, 231, 0.14);
+  --accent-bg: rgba(114, 197, 231, 0.32);
 
   --grad-1: #72c5e7; /* Mac Sky Blue */
   --grad-2: #ffb500; /* Mac Gold */
@@ -78,7 +78,7 @@
   --bg-subtle: #f9fafb;
   --border: #e5e7eb;
   --accent: #01426a; /* Mac Blue */
-  --accent-bg: rgba(1, 66, 106, 0.08);
+  --accent-bg: rgba(1, 66, 106, 0.28);
 
   --grad-1: #01426a; /* Mac Blue */
   --grad-2: #ffb500; /* Mac Gold */

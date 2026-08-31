@@ -80,8 +80,6 @@
 
 .sg-cell--highlight {
   background: var(--accent-bg);
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
   border-radius: 4px;
 }
 
@@ -481,6 +479,5 @@
 
   .sg-cell--highlight {
     background: none;
-    outline: none;
   }
 }
