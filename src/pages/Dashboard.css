@@ -3,3 +3,7 @@
   font-size: 1rem;
   margin: 24px 0 0;
 }
+
+.dashboard .btn-primary {
+  margin-top: 12px;
+}

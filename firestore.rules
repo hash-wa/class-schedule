@@ -3,7 +3,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function isEditor() {
-      return request.auth != null && request.auth.token.email == 'amin.alhashim@gmail.com';
+      return request.auth != null && request.auth.token.email == 'aalhashi@macalester.edu';
     }
 
     match /courses/{courseId} {
