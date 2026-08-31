@@ -1,0 +1,486 @@
+.sg-page {
+  --sg-scale: 1;
+  font-size: calc(13px * var(--sg-scale));
+  color: var(--text-h);
+  background: var(--bg);
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: calc(10px * var(--sg-scale));
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.sg-overflow-warning {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #f59e0b;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 0.85em;
+}
+
+/*
+ * A single grid spans both column blocks (see gridTemplateColumns() in
+ * ScheduleGrid.tsx), so week row N in block 1 and week row N in block 2 share the
+ * same grid row track and are always the same height — keeping the two columns'
+ * rows aligned regardless of how much content is in either one.
+ */
+.sg-grid {
+  display: grid;
+  align-items: stretch;
+}
+
+.sg-week-col {
+  width: 2.6em;
+}
+
+.sg-day-col {
+  text-align: left;
+  font-weight: 700;
+  padding: calc(3px * var(--sg-scale)) calc(6px * var(--sg-scale));
+  font-size: 0.95em;
+}
+
+.sg-week-label {
+  text-align: left;
+  align-self: start;
+  font-weight: 700;
+  padding: calc(4px * var(--sg-scale)) calc(4px * var(--sg-scale));
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.sg-cell {
+  align-self: stretch;
+  border-bottom: 1px solid var(--border);
+  padding: calc(4px * var(--sg-scale)) calc(6px * var(--sg-scale));
+  min-height: calc(3.2em * var(--sg-scale));
+}
+
+.sg-cell--blank {
+  color: var(--text-muted);
+}
+
+.sg-cell--clickable {
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.1s ease;
+}
+
+.sg-cell--clickable:hover {
+  background: var(--gradient-wash);
+}
+
+.sg-cell--drop-over {
+  background: var(--gradient-wash);
+  outline: 2px dashed var(--brand, #01426a);
+  outline-offset: -2px;
+}
+
+.sg-cell--highlight {
+  background: var(--accent-bg);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.sg-add-hint {
+  color: var(--text-muted);
+  font-size: 0.8em;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.sg-cell--clickable:hover .sg-add-hint {
+  opacity: 1;
+}
+
+.sg-add-event-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  padding: 0;
+  border: 1px dashed var(--text-muted);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.1s ease;
+}
+
+.sg-cell:hover .sg-add-event-btn {
+  opacity: 1;
+}
+
+.sg-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sg-edit-title-label,
+.sg-edit-date-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.sg-edit-title-input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.sg-edit-date-label input {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.sg-edit-titlerow {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.sg-edit-titlerow .sg-edit-title-label {
+  flex: 1;
+}
+
+.sg-event-preview {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.sg-edit-badge {
+  display: inline-block;
+  font-weight: 700;
+  color: var(--text-h);
+  background: var(--gradient-wash);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
+.sg-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.sg-edit-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.sg-edit-stepper-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.sg-stepper {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.sg-stepper-btn {
+  width: 24px;
+  border: none;
+  background: var(--bg-subtle);
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sg-stepper-btn:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.5;
+}
+
+.sg-stepper-btn:not(:disabled):hover {
+  background: var(--gradient-wash);
+}
+
+.sg-stepper-input {
+  width: 34px;
+  border: none;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  text-align: center;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  padding: 4px 0;
+}
+
+.sg-label-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sg-label-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px 4px 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: border-color 0.1s ease, background 0.1s ease;
+}
+
+.sg-label-swatch:hover {
+  border-color: var(--swatch-color);
+}
+
+.sg-label-swatch.sg-label-swatch--selected,
+.sg-label-swatch.sg-label-swatch--selected:hover {
+  border-color: var(--swatch-color);
+  background: color-mix(in srgb, var(--swatch-color) 14%, transparent);
+  font-weight: 700;
+}
+
+.sg-label-swatch-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--swatch-color);
+  flex-shrink: 0;
+}
+
+.sg-phase-toggle {
+  display: inline-flex;
+  align-self: flex-start;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.sg-phase-btn {
+  border: none;
+  background: var(--bg);
+  color: var(--text-muted);
+  padding: 5px 16px;
+  font-size: 0.82rem;
+  text-transform: capitalize;
+  cursor: pointer;
+}
+
+.sg-phase-btn.sg-phase-btn--active,
+.sg-phase-btn.sg-phase-btn--active:hover {
+  background: var(--gradient-primary);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 700;
+}
+
+.sg-line1 {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 0.76em;
+}
+
+.sg-date {
+  color: var(--text-muted);
+}
+
+.sg-code {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.sg-span-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  top: -3px;
+  margin-left: 1px;
+  vertical-align: top;
+  color: var(--text-muted);
+  font-size: 0.55em;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  min-width: 1.6em;
+  height: 1.6em;
+  padding: 0 0.35em;
+  line-height: 1;
+}
+
+.sg-college-event {
+  color: #b45309;
+  font-weight: 700;
+}
+
+.sg-title {
+  display: block;
+  font-weight: 700;
+  font-size: 1.15em;
+  color: var(--text-h);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  line-height: 1.25;
+  margin-top: 2px;
+}
+
+.sg-title--plain {
+  text-decoration: none;
+  cursor: default;
+}
+
+.sg-noclass {
+  font-style: italic;
+  color: var(--text-muted);
+  font-size: 1em;
+  margin-top: 2px;
+}
+
+.sg-class-events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+/* Fill vs outline (background/border/color) is set inline per event — a solid
+   gradient fill for "due" chips to draw attention, an outline only for "up" chips. */
+.sg-class-event {
+  font-size: 0.68em;
+  font-weight: 700;
+  border-radius: 999px;
+  border: 1.5px solid transparent;
+  padding: 0.5px 6px;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.sg-class-event--editable {
+  cursor: grab;
+}
+
+.sg-class-event--drop-over {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.sg-notice {
+  display: block;
+  margin-top: 3px;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 0.75em;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #fb923c, #dc2626);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.sg-notice--holiday,
+.sg-notice--other {
+  background: linear-gradient(135deg, #9ca3af, #4b5563);
+}
+.sg-notice--cancellation {
+  background: linear-gradient(135deg, #fb923c, #dc2626);
+}
+
+.sg-footer {
+  display: flex;
+  align-items: center;
+  gap: calc(16px * var(--sg-scale));
+  padding-top: calc(6px * var(--sg-scale));
+  font-size: 0.85em;
+}
+
+.sg-footer-info {
+  flex: 0 0 auto;
+  min-width: 12em;
+}
+
+.sg-footer-title {
+  font-weight: 700;
+}
+
+.sg-footer-course {
+  font-weight: 600;
+}
+
+.sg-footer-institution {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.sg-callout {
+  flex: 1;
+  background: linear-gradient(120deg, #7c2d12, #9a3412 55%, #b91c1c);
+  color: #fff;
+  border-radius: 6px;
+  padding: 6px 10px;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.sg-callout a {
+  color: #fed7aa;
+  text-decoration: underline;
+}
+
+.sg-legend {
+  flex: 0 0 auto;
+  text-align: right;
+  color: var(--text-muted);
+  font-size: 0.85em;
+  line-height: 1.3;
+}
+
+@media print {
+  @page {
+    size: landscape;
+    margin: 0.3in;
+  }
+
+  .sg-page {
+    width: 100%;
+  }
+
+  .sg-callout a {
+    color: #fed7aa;
+  }
+
+  .sg-cell--highlight {
+    background: none;
+    outline: none;
+  }
+}

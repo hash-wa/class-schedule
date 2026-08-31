@@ -1,0 +1,180 @@
+.side-menu {
+  flex: 0 0 auto;
+  width: 220px;
+  padding: 14px 12px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  /* Still scrollable (via wheel/trackpad/keyboard) when the course list overflows —
+     just without the visible scrollbar track/thumb cluttering a narrow sidebar. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.side-menu::-webkit-scrollbar {
+  display: none;
+}
+
+.side-menu--collapsed {
+  width: 44px;
+  padding: 14px 8px;
+  align-items: center;
+}
+
+.side-menu-collapsed-courses {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.side-menu-course-initials {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.side-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.side-menu-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.side-menu-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.side-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+}
+
+.side-menu-label-text {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.side-menu-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* Hidden until the row is hovered/focused — except the "+" add action, which is
+   never given this class and stays visible at all times. */
+.side-menu-hover-action {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.side-menu-row--hoverable:hover .side-menu-hover-action,
+.side-menu-row--hoverable:focus-within .side-menu-hover-action,
+.side-menu-course-row:hover .side-menu-hover-action,
+.side-menu-course-row:focus-within .side-menu-hover-action {
+  opacity: 1;
+}
+
+.side-menu-row-actions .icon-btn,
+.side-menu-compact-icon.icon-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.side-menu-row-actions .icon-btn:hover:not(:disabled),
+.side-menu-compact-icon.icon-btn:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--bg);
+}
+
+.side-menu-row-actions .icon-btn svg,
+.side-menu-compact-icon.icon-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.side-menu-block select {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.side-menu-courses {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.side-menu-hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.side-menu-course-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 6px;
+}
+
+.side-menu-course-row:hover,
+.side-menu-course-row:focus-within {
+  background: var(--gradient-wash);
+}
+
+.side-menu-course-row--active,
+.side-menu-course-row--active:hover,
+.side-menu-course-row--active:focus-within {
+  background: var(--gradient-primary);
+}
+
+.side-menu-course-row--active .side-menu-course {
+  color: #fff;
+}
+
+.side-menu-course {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 9px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-menu-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.side-menu-theme-toggle.icon-btn {
+  margin-top: auto;
+}

@@ -1,0 +1,86 @@
+.layout {
+  /* A definite height (not min-height) so percentage/flex-stretch heights lower in
+     the tree — like the schedule view sizing itself to available space — have a
+     real value to resolve against, instead of silently falling back to auto. Pages
+     with more content than fits scroll inside .layout-main below, not the whole page. */
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.layout-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+.layout-header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--gradient-brand);
+}
+
+.layout-brand {
+  font-weight: 800;
+  font-size: 1.15rem;
+  text-decoration: none;
+}
+
+.layout-auth {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+}
+
+.layout-local-badge {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.layout-user {
+  color: var(--text-muted);
+}
+
+.layout-body {
+  display: flex;
+  flex: 1;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.layout-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 20px;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+@media print {
+  .layout {
+    height: auto;
+  }
+
+  .layout-header,
+  .side-menu {
+    display: none;
+  }
+
+  .layout-main {
+    padding: 0;
+    max-width: none;
+    overflow: visible;
+  }
+}

@@ -1,0 +1,307 @@
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  position: sticky;
+  /* position: sticky's `top` offset is resolved relative to the scrollport's padding
+     edge, not its border edge — since .layout-main has 20px of top padding, a plain
+     `top: 0` sticks the header 20px below the very top of the scrollable area, leaving
+     that padding strip uncovered for scrolled-past content to show through. Negating
+     the padding here lets it stick flush with the true top instead. */
+  top: -20px;
+  z-index: 5;
+  background: var(--bg);
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.editor-header h1 {
+  font-size: 1.2rem;
+}
+
+.editor-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Matches the schedule view's toolbar icon size (PresentationView.css .pv-toolbar) for
+   visual consistency between the two pages. */
+.editor-header-actions .icon-btn {
+  width: 27px;
+  height: 27px;
+  border-radius: 6px;
+}
+
+.editor-header-actions .icon-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Flat, solid "active" state for the Save button (dirty = unsaved changes) — no gradient.
+   The `button` element qualifier isn't decorative: IconButton.css's own
+   `.icon-btn:hover:not(:disabled)` rule ties this at equal (0,3,0) specificity, so without
+   it the winner would depend on accidental stylesheet import order instead of intent. */
+button.icon-btn.editor-save-btn--active,
+button.icon-btn.editor-save-btn--active:hover {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+
+/* Same treatment for the edit toggle while editing is enabled (term unlocked). */
+button.icon-btn.editor-edit-btn--active,
+button.icon-btn.editor-edit-btn--active:hover {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+
+.editor-section {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.editor-section h2 {
+  font-size: 1rem;
+  margin-bottom: 8px;
+  padding-left: 10px;
+  border-left: 3px solid transparent;
+  border-image: var(--gradient-brand) 1;
+}
+
+.section-hint {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0 0 10px;
+}
+
+.editor-empty-hint {
+  font-style: italic;
+}
+
+.editor-count-badge {
+  display: inline-block;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 1px 8px;
+  vertical-align: middle;
+}
+
+.field-subgroup {
+  margin-bottom: 16px;
+}
+
+.field-subgroup:last-child {
+  margin-bottom: 0;
+}
+
+.field-subgroup-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.editor-add-btn {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+
+.editor-add-btn:hover:not(:disabled) {
+  background: var(--accent);
+  filter: brightness(1.1);
+}
+
+.lock-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 8px 8px 12px;
+  font-size: 0.9rem;
+  margin: 0 0 16px;
+}
+
+.lock-banner-btn {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  font-size: 0.82rem;
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+
+.lock-banner-btn:hover:not(:disabled) {
+  background: var(--accent);
+  filter: brightness(1.1);
+}
+
+.editor-fieldset {
+  border: none;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+
+.editor-fieldset:disabled .editor-section {
+  opacity: 0.6;
+}
+
+.period-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+}
+
+.period-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+
+.period-list input,
+.period-list select {
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.period-list select {
+  text-transform: capitalize;
+}
+
+.period-list-sep {
+  color: var(--text-muted);
+}
+
+.period-list-text {
+  flex: 1;
+  min-width: 140px;
+}
+
+.linkbase-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+}
+
+.linkbase-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+
+.linkbase-list input {
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.linkbase-label {
+  flex: 0 0 auto;
+  width: 8em;
+  font-weight: 600;
+}
+
+.linkbase-url {
+  flex: 1;
+  color: var(--text-muted);
+}
+
+.session-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+}
+
+.session-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.drag-handle {
+  cursor: grab;
+  color: var(--text-muted);
+  padding-top: 20px;
+  touch-action: none;
+}
+
+.session-row-number {
+  flex: 0 0 auto;
+  width: 2.4em;
+  padding-top: 20px;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.session-row-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 2;
+  min-width: 320px;
+}
+
+.session-row-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.session-row-title {
+  flex: 2;
+  min-width: 140px;
+}
+
+.session-row-spans input {
+  width: 3.5em;
+}
+
+.session-row-fields input {
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.editor-preview {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  overflow-x: auto;
+}

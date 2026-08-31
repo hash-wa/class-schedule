@@ -1,0 +1,41 @@
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Modal is portaled to document.body, so it can end up a stacking-context sibling
+     of other fixed-position overlays (e.g. the fullscreen presentation view) — keep
+     this above any of them regardless of DOM order. */
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--bg);
+  border-radius: 12px;
+  border-top: 3px solid transparent;
+  border-image: var(--gradient-brand) 1;
+  padding: 20px;
+  width: 360px;
+  max-width: 90vw;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 40px -12px var(--shadow-primary);
+}
+
+.modal--wide {
+  width: 520px;
+}
+
+.modal-hint {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}

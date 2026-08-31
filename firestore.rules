@@ -1,0 +1,26 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isEditor() {
+      return request.auth != null && request.auth.token.email == 'amin.alhashim@gmail.com';
+    }
+
+    match /courses/{courseId} {
+      allow read: if true;
+      allow write: if isEditor();
+
+      match /terms/{termId} {
+        allow read: if true;
+        allow write: if isEditor();
+      }
+    }
+
+    // Shared academic calendar (dates, holidays, college events) for a term across
+    // every course schedule that references it.
+    match /semesters/{semesterId} {
+      allow read: if true;
+      allow write: if isEditor();
+    }
+  }
+}

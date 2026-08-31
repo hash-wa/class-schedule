@@ -1,0 +1,883 @@
+import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { arrayMove } from '@dnd-kit/sortable'
+import { format } from 'date-fns'
+import { Plus } from 'lucide-react'
+import { Fragment, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { LinkFieldEditor } from './LinkFieldEditor'
+import { Modal } from './Modal'
+import { resolveClassEventLabel } from '../lib/classEventLabels'
+import { resolveTopicLink } from '../lib/links'
+import { resolveSessionLabelLetter } from '../lib/sessionLabel'
+import {
+  buildClassEventsByDate,
+  buildCollegeEventsByDate,
+  buildSchedule,
+  insertClassEvent,
+  type AssignedCell,
+  type SpanPosition,
+  type WeekRow,
+} from '../lib/scheduleEngine'
+import { WEEKDAY_LABELS } from '../types'
+import type { ClassEvent, ClassEventLabel, Course, EventPhase, LinkBase, ResolvedTerm, Topic, Weekday } from '../types'
+import '../styles/forms.css'
+import './ScheduleGrid.css'
+
+const SCALE_REFERENCE_WEEKS = 8
+const EVENT_PHASES: EventPhase[] = ['due', 'up']
+
+function formatShortDate(date: Date): string {
+  return `${date.getMonth() + 1}/${date.getDate()}`
+}
+
+/** Splits into (at most) `blockCount` side-by-side column groups, evenly balanced. */
+function splitIntoBlocks(rows: WeekRow[], blockCount: number): WeekRow[][] {
+  if (rows.length <= 1 || blockCount <= 1) return [rows]
+  const perBlock = Math.ceil(rows.length / blockCount)
+  const blocks: WeekRow[][] = []
+  for (let i = 0; i < rows.length; i += perBlock) blocks.push(rows.slice(i, i + perBlock))
+  return blocks
+}
+
+/** blockCount repetitions of (week-label col, N day cols), each separated by a spacer column. */
+function gridTemplateColumns(dayCount: number, blockCount: number): string {
+  const block = `max-content repeat(${dayCount}, 1fr)`
+  return Array(blockCount).fill(block).join(' calc(24px * var(--sg-scale)) ')
+}
+
+interface ScheduleGridProps {
+  course: Course
+  term: ResolvedTerm
+  /** When true, clicking a lecture (or an empty date) opens an inline editor, and topics/events become draggable. */
+  editable?: boolean
+  /** Number of side-by-side week-column groups (used both on screen and when printing). Defaults to 2. */
+  blockCount?: 1 | 2
+  /** When set, grows or shrinks row height/font size (not a transform) so the grid's natural
+   * height exactly fills this many px — used for "fill the page" printing. The grid already
+   * fills 100% of its container's width on its own, so only height needs this treatment. */
+  fillHeightPx?: number
+  onTopicsChange?: (topics: Topic[]) => void
+  onClassEventsChange?: (events: ClassEvent[]) => void
+}
+
+function Line1({
+  letter,
+  lectureNumber,
+  date,
+  collegeEvent,
+}: {
+  letter: string
+  lectureNumber?: number
+  date: Date
+  collegeEvent?: string
+}) {
+  return (
+    <div className="sg-line1">
+      {lectureNumber !== undefined && (
+        <span className="sg-code">
+          {letter}
+          {lectureNumber}
+        </span>
+      )}
+      <span className="sg-date">{formatShortDate(date)}</span>
+      {collegeEvent && <span className="sg-college-event">{collegeEvent}</span>}
+    </div>
+  )
+}
+
+function SpanBadge({ spanPosition }: { spanPosition: SpanPosition }) {
+  return (
+    <span className="sg-span-badge" title={`Session ${spanPosition.index} of ${spanPosition.total} for this topic`}>
+      {spanPosition.index}/{spanPosition.total}
+    </span>
+  )
+}
+
+function DraggableTopic({ topicId, children }: { topicId: string; children: ReactNode }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `topic:${topicId}`,
+    data: { type: 'topic', topicId },
+  })
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      style={{ opacity: isDragging ? 0.4 : 1, cursor: 'grab', touchAction: 'none' }}
+    >
+      {children}
+    </div>
+  )
+}
+
+function EventChip({
+  event,
+  classEventLabels,
+  editable,
+  onEdit,
+}: {
+  event: ClassEvent
+  classEventLabels: ClassEventLabel[]
+  editable: boolean
+  onEdit: (event: ClassEvent) => void
+}) {
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+    id: `event:${event.id}`,
+    data: { type: 'event', eventId: event.id },
+    disabled: !editable,
+  })
+  // Also a drop target (distinct id from the draggable one above) — dropping another
+  // chip onto this one reorders it to sit immediately before this chip, letting the
+  // user override the default due-before-up placement by hand.
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `event-drop:${event.id}`,
+    disabled: !editable,
+  })
+  const setRefs = (node: HTMLElement | null) => {
+    setDragRef(node)
+    setDropRef(node)
+  }
+  const eventLabel = resolveClassEventLabel(event.labelId, classEventLabels)
+  const colorStyle =
+    event.phase === 'due'
+      ? { background: eventLabel.color, borderColor: 'transparent', color: '#fff' }
+      : { background: 'transparent', borderColor: eventLabel.color, color: eventLabel.color }
+
+  return (
+    <span
+      ref={setRefs}
+      {...(editable ? attributes : {})}
+      {...(editable ? listeners : {})}
+      className={`sg-class-event${editable ? ' sg-class-event--editable' : ''}${isOver ? ' sg-class-event--drop-over' : ''}`}
+      style={{ ...colorStyle, opacity: isDragging ? 0.4 : 1, touchAction: editable ? 'none' : undefined }}
+      onClick={
+        editable
+          ? (e) => {
+              e.stopPropagation()
+              onEdit(event)
+            }
+          : undefined
+      }
+    >
+      {event.text} {event.phase}
+    </span>
+  )
+}
+
+function ClassEventChips({
+  events,
+  classEventLabels,
+  editable,
+  onEdit,
+}: {
+  events: ClassEvent[]
+  classEventLabels: ClassEventLabel[]
+  editable: boolean
+  onEdit: (event: ClassEvent) => void
+}) {
+  if (events.length === 0) return null
+  return (
+    <div className="sg-class-events">
+      {events.map((event) => (
+        <EventChip key={event.id} event={event} classEventLabels={classEventLabels} editable={editable} onEdit={onEdit} />
+      ))}
+    </div>
+  )
+}
+
+function Cell({
+  cell,
+  clickable,
+  eventsEditable,
+  canAddEvent,
+  dropEnabled,
+  onClick,
+  onAddEvent,
+  onEditEvent,
+  collegeEvent,
+  classEvents,
+  linkBases,
+  classEventLabels,
+  letter,
+  gridColumn,
+  gridRow,
+  highlighted,
+}: {
+  cell: AssignedCell | undefined
+  clickable: boolean
+  eventsEditable: boolean
+  canAddEvent: boolean
+  dropEnabled: boolean
+  onClick?: () => void
+  onAddEvent: (iso: string) => void
+  onEditEvent: (event: ClassEvent) => void
+  collegeEvent?: string
+  classEvents: ClassEvent[]
+  linkBases: LinkBase[]
+  classEventLabels: ClassEventLabel[]
+  letter: string
+  gridColumn: number
+  gridRow: number
+  highlighted?: boolean
+}) {
+  const style = { gridColumn, gridRow }
+  const { setNodeRef, isOver } = useDroppable({
+    id: cell ? `cell:${cell.iso}` : 'cell:none',
+    disabled: !cell || !dropEnabled,
+  })
+
+  if (!cell) return <div className="sg-cell sg-cell--empty" style={style} />
+
+  const dropClass = isOver && dropEnabled ? ' sg-cell--drop-over' : ''
+  const addEventButton = canAddEvent && (
+    <button
+      type="button"
+      className="sg-add-event-btn"
+      title="Add class event"
+      onClick={(e) => {
+        e.stopPropagation()
+        onAddEvent(cell.iso)
+      }}
+    >
+      <Plus size={10} />
+    </button>
+  )
+
+  if (cell.exception) {
+    const styleClass = `sg-notice sg-notice--${cell.exception.style}`
+    return (
+      <div ref={setNodeRef} className={`sg-cell${dropClass}`} style={style}>
+        <Line1 letter={letter} date={cell.date} collegeEvent={collegeEvent} />
+        <div className={styleClass}>{cell.exception.reason}</div>
+        <ClassEventChips events={classEvents} classEventLabels={classEventLabels} editable={eventsEditable} onEdit={onEditEvent} />
+        {addEventButton}
+      </div>
+    )
+  }
+
+  const topic = cell.topic
+  const cellClass = `sg-cell${dropClass}${clickable ? ' sg-cell--clickable' : ''}${!topic ? ' sg-cell--blank' : ''}${highlighted ? ' sg-cell--highlight' : ''}`
+  const resolvedLink = topic ? resolveTopicLink(topic, linkBases) : undefined
+
+  return (
+    <div ref={setNodeRef} className={cellClass} style={style} onClick={clickable ? onClick : undefined}>
+      <Line1 letter={letter} lectureNumber={cell.lectureNumber} date={cell.date} collegeEvent={collegeEvent} />
+      {!topic ? (
+        clickable && <div className="sg-add-hint">+ add</div>
+      ) : clickable ? (
+        <DraggableTopic topicId={topic.id}>
+          <div className={topic.isNoClass ? 'sg-noclass' : 'sg-title sg-title--plain'}>
+            {topic.isNoClass ? <>~ {topic.title} ~</> : topic.title}
+            {cell.spanPosition && <SpanBadge spanPosition={cell.spanPosition} />}
+          </div>
+        </DraggableTopic>
+      ) : topic.isNoClass ? (
+        <div className="sg-noclass">
+          ~ {topic.title} ~{cell.spanPosition && <SpanBadge spanPosition={cell.spanPosition} />}
+        </div>
+      ) : resolvedLink ? (
+        <a className="sg-title" href={resolvedLink} target="_blank" rel="noreferrer">
+          {topic.title}
+          {cell.spanPosition && <SpanBadge spanPosition={cell.spanPosition} />}
+        </a>
+      ) : (
+        <div className="sg-title sg-title--plain">
+          {topic.title}
+          {cell.spanPosition && <SpanBadge spanPosition={cell.spanPosition} />}
+        </div>
+      )}
+      <ClassEventChips events={classEvents} classEventLabels={classEventLabels} editable={eventsEditable} onEdit={onEditEvent} />
+      {addEventButton}
+    </div>
+  )
+}
+
+/**
+ * Renders one block's cells as children of a shared CSS grid (see GRID_TEMPLATE_COLUMNS
+ * below) — placing every block on the same grid row tracks is what keeps week rows
+ * aligned across the two side-by-side column groups, since a grid row's height is
+ * driven by the tallest cell assigned to it from *either* block.
+ */
+function Block({
+  rows,
+  columns,
+  blockIndex,
+  topicsEditable,
+  eventsEditable,
+  onCellClick,
+  onAddEvent,
+  onEditEvent,
+  collegeEventsByDate,
+  classEventsByDate,
+  linkBases,
+  classEventLabels,
+  letter,
+  highlightIso,
+}: {
+  rows: WeekRow[]
+  columns: Weekday[]
+  blockIndex: number
+  topicsEditable: boolean
+  eventsEditable: boolean
+  onCellClick: (cell: AssignedCell) => void
+  onAddEvent: (iso: string) => void
+  onEditEvent: (event: ClassEvent) => void
+  collegeEventsByDate: Map<string, string>
+  classEventsByDate: Map<string, ClassEvent[]>
+  linkBases: LinkBase[]
+  classEventLabels: ClassEventLabel[]
+  letter: string
+  highlightIso?: string
+}) {
+  const dayCount = columns.length
+  const blockSpan = dayCount + 2 // week-label col + day cols + trailing spacer col
+  const weekLabelColumn = blockIndex * blockSpan + 1
+  const dayColumn = (dayIndex: number) => blockIndex * blockSpan + 2 + dayIndex
+  const noEvents: ClassEvent[] = []
+
+  return (
+    <>
+      <div className="sg-week-col" style={{ gridColumn: weekLabelColumn, gridRow: 1 }} />
+      {columns.map((day, i) => (
+        <div key={day} className="sg-day-col gradient-text" style={{ gridColumn: dayColumn(i), gridRow: 1 }}>
+          {WEEKDAY_LABELS[day]}
+        </div>
+      ))}
+      {rows.map((row, r) => (
+        <Fragment key={row.weekIndex}>
+          <div className="sg-week-label gradient-text" style={{ gridColumn: weekLabelColumn, gridRow: r + 2 }}>
+            {row.label}
+          </div>
+          {columns.map((day, i) => {
+            const cell = row.cellsByWeekday[day]
+            const clickable = topicsEditable && !!cell && !cell.exception
+            return (
+              <Cell
+                key={day}
+                cell={cell}
+                clickable={clickable}
+                eventsEditable={eventsEditable}
+                canAddEvent={eventsEditable && !!cell}
+                dropEnabled={topicsEditable || eventsEditable}
+                onClick={cell ? () => onCellClick(cell) : undefined}
+                onAddEvent={onAddEvent}
+                onEditEvent={onEditEvent}
+                collegeEvent={cell ? collegeEventsByDate.get(cell.iso) : undefined}
+                classEvents={cell ? (classEventsByDate.get(cell.iso) ?? noEvents) : noEvents}
+                linkBases={linkBases}
+                classEventLabels={classEventLabels}
+                letter={letter}
+                gridColumn={dayColumn(i)}
+                gridRow={r + 2}
+                highlighted={!!cell && cell.iso === highlightIso}
+              />
+            )
+          })}
+        </Fragment>
+      ))}
+    </>
+  )
+}
+
+export function ScheduleGrid({ course, term, editable, blockCount = 2, fillHeightPx, onTopicsChange, onClassEventsChange }: ScheduleGridProps) {
+  const letter = resolveSessionLabelLetter(term)
+  const { rows, columns, overflowTopics } = useMemo(() => buildSchedule(term), [term])
+  const blocks = useMemo(() => splitIntoBlocks(rows, blockCount), [rows, blockCount])
+  const maxBlockLen = Math.max(...blocks.map((b) => b.length), 1)
+  const scale = Math.min(1, SCALE_REFERENCE_WEEKS / maxBlockLen)
+  const pageRef = useRef<HTMLDivElement>(null)
+  const [computedScale, setComputedScale] = useState(scale)
+
+  // "Fill the page": row height/font-size don't scale scrollHeight linearly (bigger text can
+  // wrap title text onto extra lines within the fixed column width), so instead of a single
+  // measure-and-multiply pass, binary-search for the largest --sg-scale that still fits within
+  // fillHeightPx — each iteration is a direct DOM write + forced-reflow measurement.
+  useLayoutEffect(() => {
+    function recompute() {
+      if (fillHeightPx == null) {
+        setComputedScale(scale)
+        return
+      }
+      const el = pageRef.current
+      if (!el) return
+      let lo = 0.1
+      let hi = 20
+      for (let i = 0; i < 14; i++) {
+        const mid = (lo + hi) / 2
+        el.style.setProperty('--sg-scale', String(mid))
+        if (el.scrollHeight > fillHeightPx) hi = mid
+        else lo = mid
+      }
+      setComputedScale(lo)
+    }
+    recompute()
+  }, [fillHeightPx, scale, term])
+
+  // Today's session if it has one, else the next upcoming one — cells within a week row are
+  // already in chronological (Mon->Sun) order, and weeks are too, so a single forward scan works.
+  const highlightIso = useMemo(() => {
+    if (!term.highlightToday) return undefined
+    const todayIso = format(new Date(), 'yyyy-MM-dd')
+    let next: string | undefined
+    for (const row of rows) {
+      for (const day of columns) {
+        const cell = row.cellsByWeekday[day]
+        if (!cell || cell.exception) continue
+        if (cell.iso === todayIso) return cell.iso
+        if (cell.iso > todayIso && (next === undefined || cell.iso < next)) next = cell.iso
+      }
+    }
+    return next
+  }, [term.highlightToday, rows, columns])
+
+  const collegeEventsByDate = useMemo(() => buildCollegeEventsByDate(term.collegeEvents), [term.collegeEvents])
+  const classEventsByDate = useMemo(() => buildClassEventsByDate(term.classEvents), [term.classEvents])
+  const cellByIso = useMemo(() => {
+    const map = new Map<string, AssignedCell>()
+    for (const row of rows) {
+      for (const day of columns) {
+        const cell = row.cellsByWeekday[day]
+        if (cell) map.set(cell.iso, cell)
+      }
+    }
+    return map
+  }, [rows, columns])
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+
+  const [editingTopic, setEditingTopic] = useState<{ topic: Topic; isNew: boolean; lectureNumber?: number } | null>(null)
+  const [editingEvent, setEditingEvent] = useState<{ event: ClassEvent; isNew: boolean } | null>(null)
+
+  const topicsEditable = !!editable && !!onTopicsChange
+  const eventsEditable = !!editable && !!onClassEventsChange && term.classEventLabels.length > 0
+
+  function handleCellClick(cell: AssignedCell) {
+    if (cell.topic) {
+      setEditingTopic({ topic: cell.topic, isNew: false, lectureNumber: cell.lectureNumber })
+    } else {
+      setEditingTopic({ topic: { id: crypto.randomUUID(), title: '' }, isNew: true })
+    }
+  }
+
+  function handleSaveTopic(topic: Topic) {
+    if (!onTopicsChange) return
+    if (editingTopic?.isNew) {
+      onTopicsChange([...term.topics, topic])
+    } else {
+      onTopicsChange(term.topics.map((t) => (t.id === topic.id ? topic : t)))
+    }
+    setEditingTopic(null)
+  }
+
+  function handleDeleteTopic() {
+    if (!onTopicsChange || !editingTopic) return
+    onTopicsChange(term.topics.filter((t) => t.id !== editingTopic.topic.id))
+    setEditingTopic(null)
+  }
+
+  function handleAddEvent(iso: string) {
+    setEditingEvent({
+      event: { id: crypto.randomUUID(), date: iso, text: '', labelId: term.classEventLabels[0]?.id ?? '', phase: 'due' },
+      isNew: true,
+    })
+  }
+
+  function handleEditEvent(event: ClassEvent) {
+    setEditingEvent({ event, isNew: false })
+  }
+
+  function handleSaveEvent(event: ClassEvent) {
+    if (!onClassEventsChange) return
+    if (editingEvent?.isNew) {
+      onClassEventsChange(insertClassEvent(term.classEvents, event))
+    } else {
+      onClassEventsChange(term.classEvents.map((e) => (e.id === event.id ? event : e)))
+    }
+    setEditingEvent(null)
+  }
+
+  function handleDeleteEvent() {
+    if (!onClassEventsChange || !editingEvent) return
+    onClassEventsChange(term.classEvents.filter((e) => e.id !== editingEvent.event.id))
+    setEditingEvent(null)
+  }
+
+  function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over) return
+    const data = active.data.current as { type: 'topic'; topicId: string } | { type: 'event'; eventId: string } | undefined
+    if (!data) return
+    const overId = String(over.id)
+
+    if (data.type === 'topic') {
+      if (!onTopicsChange || !overId.startsWith('cell:')) return
+      const targetCell = cellByIso.get(overId.slice('cell:'.length))
+      if (!targetCell || targetCell.exception) return
+      const topics = term.topics
+      const fromIndex = topics.findIndex((t) => t.id === data.topicId)
+      if (fromIndex === -1) return
+      const toIndex = targetCell.topic ? topics.findIndex((t) => t.id === targetCell.topic!.id) : topics.length - 1
+      if (toIndex === -1 || toIndex === fromIndex) return
+      onTopicsChange(arrayMove(topics, fromIndex, toIndex))
+      return
+    }
+
+    // data.type === 'event'
+    if (!onClassEventsChange) return
+    const dragged = term.classEvents.find((ev) => ev.id === data.eventId)
+    if (!dragged) return
+
+    if (overId.startsWith('event-drop:')) {
+      // Dropped directly onto another chip — reorder to sit right before it (and
+      // adopt its date, if different), overriding the due-before-up default.
+      const targetEventId = overId.slice('event-drop:'.length)
+      if (targetEventId === data.eventId) return
+      const target = term.classEvents.find((ev) => ev.id === targetEventId)
+      if (!target) return
+      const withoutDragged = term.classEvents.filter((ev) => ev.id !== data.eventId)
+      const targetIndex = withoutDragged.findIndex((ev) => ev.id === targetEventId)
+      const movedEvent = { ...dragged, date: target.date }
+      onClassEventsChange([...withoutDragged.slice(0, targetIndex), movedEvent, ...withoutDragged.slice(targetIndex)])
+    } else if (overId.startsWith('cell:')) {
+      // Dropped onto empty cell space — just move it to that day, placed by the same
+      // due-before-up default used for newly created events.
+      const targetIso = overId.slice('cell:'.length)
+      if (!cellByIso.has(targetIso)) return
+      const withoutDragged = term.classEvents.filter((ev) => ev.id !== data.eventId)
+      onClassEventsChange(insertClassEvent(withoutDragged, { ...dragged, date: targetIso }))
+    }
+  }
+
+  return (
+    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <div ref={pageRef} className="sg-page" style={{ '--sg-scale': computedScale } as React.CSSProperties}>
+        {overflowTopics.length > 0 && (
+          <div className="sg-overflow-warning">
+            {overflowTopics.length} topic(s) run past the term end date and aren't shown: "
+            {overflowTopics[0].title}"{overflowTopics.length > 1 ? ', …' : ''}. Extend the end date or trim
+            topics.
+          </div>
+        )}
+
+        <div className="sg-grid" style={{ gridTemplateColumns: gridTemplateColumns(columns.length, blocks.length) }}>
+          {blocks.map((block, i) => (
+            <Block
+              key={i}
+              rows={block}
+              columns={columns}
+              blockIndex={i}
+              topicsEditable={topicsEditable}
+              eventsEditable={eventsEditable}
+              onCellClick={handleCellClick}
+              onAddEvent={handleAddEvent}
+              onEditEvent={handleEditEvent}
+              collegeEventsByDate={collegeEventsByDate}
+              classEventsByDate={classEventsByDate}
+              linkBases={term.linkBases}
+              classEventLabels={term.classEventLabels}
+              letter={letter}
+              highlightIso={highlightIso}
+            />
+          ))}
+        </div>
+
+        <div className="sg-footer">
+          <div className="sg-footer-info">
+            <div className="sg-footer-title">Class Schedule</div>
+            <div className="sg-footer-course">
+              {course.code}: {course.title}
+            </div>
+            <div className="sg-footer-institution">
+              {course.institution} &middot; {term.label}
+            </div>
+          </div>
+
+          {term.bannerText && (
+            <div className="sg-callout">
+              {term.bannerText}
+              {term.bannerLinkUrl && (
+                <>
+                  {' '}
+                  <a href={term.bannerLinkUrl} target="_blank" rel="noreferrer">
+                    {term.bannerLinkText || term.bannerLinkUrl}
+                  </a>
+                </>
+              )}
+            </div>
+          )}
+
+          <div className="sg-legend">
+            {term.legendText
+              ? term.legendText.split('\n').map((line, i) => <div key={i}>{line}</div>)
+              : [
+                  `${letter}X=Lecture X | M/D=Month/Day academic event`,
+                  'Topic links to ICA',
+                  'H=Homework | PM=Project Milestone',
+                ].map((line, i) => <div key={i}>{line}</div>)}
+          </div>
+        </div>
+
+        {editingTopic && (
+          <TopicEditModal
+            topic={editingTopic.topic}
+            isNew={editingTopic.isNew}
+            lectureNumber={editingTopic.lectureNumber}
+            letter={letter}
+            linkBases={term.linkBases}
+            onSave={handleSaveTopic}
+            onDelete={editingTopic.isNew ? undefined : handleDeleteTopic}
+            onClose={() => setEditingTopic(null)}
+          />
+        )}
+
+        {editingEvent && (
+          <EventEditModal
+            event={editingEvent.event}
+            isNew={editingEvent.isNew}
+            classEventLabels={term.classEventLabels}
+            onSave={handleSaveEvent}
+            onDelete={editingEvent.isNew ? undefined : handleDeleteEvent}
+            onClose={() => setEditingEvent(null)}
+          />
+        )}
+      </div>
+    </DndContext>
+  )
+}
+
+function TopicEditModal({
+  topic,
+  isNew,
+  lectureNumber,
+  letter,
+  linkBases,
+  onSave,
+  onDelete,
+  onClose,
+}: {
+  topic: Topic
+  isNew: boolean
+  lectureNumber?: number
+  letter: string
+  linkBases: LinkBase[]
+  onSave: (topic: Topic) => void
+  onDelete?: () => void
+  onClose: () => void
+}) {
+  const [draft, setDraft] = useState<Topic>(topic)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  function patch(p: Partial<Topic>) {
+    setDraft((d) => ({ ...d, ...p }))
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!draft.title.trim()) return
+    onSave({ ...draft, title: draft.title.trim() })
+  }
+
+  const spans = draft.repeatCount ?? 1
+
+  return (
+    <Modal title={isNew ? 'Add topic' : 'Edit topic'} onClose={onClose} wide>
+      <form onSubmit={handleSubmit} className="sg-edit-form">
+        <label className="sg-edit-title-label">
+          Title
+          <input
+            className="sg-edit-title-input"
+            value={draft.title}
+            onChange={(e) => patch({ title: e.target.value })}
+            placeholder="Lecture title…"
+            autoFocus
+          />
+        </label>
+
+        {!draft.isNoClass && (
+          <p className="modal-hint">
+            <span className="sg-edit-badge">
+              {letter}
+              {lectureNumber ?? '?'}
+            </span>{' '}
+            assigned automatically based on position among held classes.
+          </p>
+        )}
+
+        <div className="sg-edit-row">
+          <label className="sg-edit-checkbox">
+            <input type="checkbox" checked={!!draft.isNoClass} onChange={(e) => patch({ isNoClass: e.target.checked })} />
+            No class
+          </label>
+
+          <label className="sg-edit-stepper-label" title="Number of consecutive sessions this one topic occupies">
+            Spans
+            <span className="sg-stepper">
+              <button
+                type="button"
+                className="sg-stepper-btn"
+                disabled={spans <= 1}
+                onClick={() => patch({ repeatCount: Math.max(1, spans - 1) })}
+              >
+                −
+              </button>
+              <input
+                type="number"
+                className="sg-stepper-input"
+                min={1}
+                max={20}
+                value={spans}
+                onChange={(e) => patch({ repeatCount: Math.max(1, Math.min(20, Number(e.target.value) || 1)) })}
+              />
+              <button
+                type="button"
+                className="sg-stepper-btn"
+                disabled={spans >= 20}
+                onClick={() => patch({ repeatCount: Math.min(20, spans + 1) })}
+              >
+                +
+              </button>
+            </span>
+          </label>
+        </div>
+
+        {!draft.isNoClass && (
+          <LinkFieldEditor
+            linkBases={linkBases}
+            titleLink={draft.titleLink}
+            titleLinkBaseId={draft.titleLinkBaseId}
+            onChange={patch}
+          />
+        )}
+
+        <div className="modal-actions">
+          {onDelete && (
+            <button
+              type="button"
+              className="danger"
+              onClick={() => (confirmDelete ? onDelete() : setConfirmDelete(true))}
+              onMouseLeave={() => setConfirmDelete(false)}
+            >
+              {confirmDelete ? 'Confirm delete?' : 'Delete'}
+            </button>
+          )}
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn-primary">
+            Save
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+function EventEditModal({
+  event,
+  isNew,
+  classEventLabels,
+  onSave,
+  onDelete,
+  onClose,
+}: {
+  event: ClassEvent
+  isNew: boolean
+  classEventLabels: ClassEventLabel[]
+  onSave: (event: ClassEvent) => void
+  onDelete?: () => void
+  onClose: () => void
+}) {
+  const [draft, setDraft] = useState<ClassEvent>(event)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  function patch(p: Partial<ClassEvent>) {
+    setDraft((d) => ({ ...d, ...p }))
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!draft.text.trim() || !draft.labelId) return
+    onSave({ ...draft, text: draft.text.trim() })
+  }
+
+  const selectedLabel = resolveClassEventLabel(draft.labelId, classEventLabels)
+  const previewStyle =
+    draft.phase === 'due'
+      ? { background: selectedLabel.color, borderColor: 'transparent', color: '#fff' }
+      : { background: 'transparent', borderColor: selectedLabel.color, color: selectedLabel.color }
+
+  return (
+    <Modal title={isNew ? 'Add class event' : 'Edit class event'} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="sg-edit-form">
+        <div className="sg-edit-titlerow">
+          <label className="sg-edit-title-label">
+            Text
+            <input
+              className="sg-edit-title-input"
+              value={draft.text}
+              onChange={(e) => patch({ text: e.target.value })}
+              autoFocus
+              placeholder="e.g. H1"
+            />
+          </label>
+          <span className="sg-class-event sg-event-preview" style={previewStyle}>
+            {draft.text.trim() || 'Text'} {draft.phase}
+          </span>
+        </div>
+
+        <label className="sg-edit-date-label">
+          Date
+          <input type="date" value={draft.date} onChange={(e) => patch({ date: e.target.value })} />
+        </label>
+
+        <div className="sg-label-picker">
+          {classEventLabels.map((l) => (
+            <button
+              key={l.id}
+              type="button"
+              className={`sg-label-swatch${draft.labelId === l.id ? ' sg-label-swatch--selected' : ''}`}
+              style={{ '--swatch-color': l.color } as React.CSSProperties}
+              onClick={() => patch({ labelId: l.id })}
+            >
+              <span className="sg-label-swatch-dot" />
+              {l.name}
+            </button>
+          ))}
+        </div>
+
+        <div className="sg-phase-toggle" role="group" aria-label="Phase">
+          {EVENT_PHASES.map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`sg-phase-btn${draft.phase === p ? ' sg-phase-btn--active' : ''}`}
+              onClick={() => patch({ phase: p })}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+
+        <p className="modal-hint">Tip: you can also drag the chip on the grid to move it to a different date.</p>
+
+        <div className="modal-actions">
+          {onDelete && (
+            <button
+              type="button"
+              className="danger"
+              onClick={() => (confirmDelete ? onDelete() : setConfirmDelete(true))}
+              onMouseLeave={() => setConfirmDelete(false)}
+            >
+              {confirmDelete ? 'Confirm delete?' : 'Delete'}
+            </button>
+          )}
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn-primary">
+            Save
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
