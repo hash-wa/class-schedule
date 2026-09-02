@@ -236,6 +236,9 @@ export interface AssignedCell {
   exception?: CalendarException
   /** set only when `topic` spans multiple sessions (repeatCount > 1), e.g. { index: 2, total: 3 } for "2/3" */
   spanPosition?: SpanPosition
+  /** True for a schedule-range padding day outside the actual classes start/end —
+   * shown for context (see `resolveScheduleRange`) but never assignable a topic. */
+  isBuffer?: boolean
 }
 
 export interface ScheduleAssignment {
@@ -322,14 +325,59 @@ export function groupByWeek(
   return { rows, columns: orderedColumns }
 }
 
+/**
+ * The grid's actual display range — `scheduleStartDate`/`scheduleEndDate` widen it
+ * past the classes start/end, but only when they actually widen it: a narrower value
+ * (e.g. set by mistake) is ignored rather than clipping real class sessions off the
+ * grid.
+ */
+export function resolveScheduleRange(
+  term: Pick<ResolvedTerm, 'startDate' | 'endDate' | 'scheduleStartDate' | 'scheduleEndDate'>,
+): { start: string; end: string } {
+  const start = term.scheduleStartDate && term.scheduleStartDate < term.startDate ? term.scheduleStartDate : term.startDate
+  const end = term.scheduleEndDate && term.scheduleEndDate > term.endDate ? term.scheduleEndDate : term.endDate
+  return { start, end }
+}
+
+/**
+ * Blank, never-assignable cells for the parts of the display range that fall outside
+ * the actual classes start/end — e.g. a couple of extra days shown before classes
+ * begin or after they end. Purely for grid padding: no topic, no exception lookup.
+ */
+function buildBufferCells(
+  term: Pick<ResolvedTerm, 'startDate' | 'endDate' | 'scheduleStartDate' | 'scheduleEndDate' | 'meetingDays'>,
+): AssignedCell[] {
+  const { start, end } = resolveScheduleRange(term)
+  const cells: AssignedCell[] = []
+
+  if (start < term.startDate) {
+    const before = isoDate(addDays(parseISO(term.startDate), -1))
+    for (const date of buildPatternDates(start, before, term.meetingDays)) {
+      cells.push({ date, iso: isoDate(date), weekday: weekdayOf(date), isBuffer: true })
+    }
+  }
+  if (end > term.endDate) {
+    const after = isoDate(addDays(parseISO(term.endDate), 1))
+    for (const date of buildPatternDates(after, end, term.meetingDays)) {
+      cells.push({ date, iso: isoDate(date), weekday: weekdayOf(date), isBuffer: true })
+    }
+  }
+
+  return cells
+}
+
 export interface BuiltSchedule {
   rows: WeekRow[]
   columns: Weekday[]
   overflowTopics: Topic[]
 }
 
-export function buildSchedule(term: Pick<ResolvedTerm, 'startDate' | 'endDate' | 'meetingDays' | 'exceptions' | 'topics'>): BuiltSchedule {
+export function buildSchedule(
+  term: Pick<ResolvedTerm, 'startDate' | 'endDate' | 'scheduleStartDate' | 'scheduleEndDate' | 'meetingDays' | 'exceptions' | 'topics'>,
+): BuiltSchedule {
   const { cells, overflowTopics } = assignTopics(term)
-  const { rows, columns } = groupByWeek(cells, term.startDate, term.meetingDays)
+  const allCells = [...buildBufferCells(term), ...cells].sort((a, b) => a.iso.localeCompare(b.iso))
+  const { start } = resolveScheduleRange(term)
+  const { rows, columns } = groupByWeek(allCells, start, term.meetingDays)
   return { rows, columns, overflowTopics }
 }

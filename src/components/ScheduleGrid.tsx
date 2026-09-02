@@ -350,7 +350,7 @@ function Block({
           </div>
           {columns.map((day, i) => {
             const cell = row.cellsByWeekday[day]
-            const clickable = topicsEditable && !!cell && !cell.exception
+            const clickable = topicsEditable && !!cell && !cell.exception && !cell.isBuffer
             return (
               <Cell
                 key={day}
@@ -422,7 +422,7 @@ export function ScheduleGrid({ course, term, editable, blockCount = 2, fillHeigh
     for (const row of rows) {
       for (const day of columns) {
         const cell = row.cellsByWeekday[day]
-        if (!cell || cell.exception) continue
+        if (!cell || cell.exception || cell.isBuffer) continue
         if (cell.iso === todayIso) return cell.iso
         if (cell.iso > todayIso && (next === undefined || cell.iso < next)) next = cell.iso
       }
@@ -512,7 +512,7 @@ export function ScheduleGrid({ course, term, editable, blockCount = 2, fillHeigh
     if (data.type === 'topic') {
       if (!onTopicsChange || !overId.startsWith('cell:')) return
       const targetCell = cellByIso.get(overId.slice('cell:'.length))
-      if (!targetCell || targetCell.exception) return
+      if (!targetCell || targetCell.exception || targetCell.isBuffer) return
       const topics = term.topics
       const fromIndex = topics.findIndex((t) => t.id === data.topicId)
       if (fromIndex === -1) return

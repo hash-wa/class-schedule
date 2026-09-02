@@ -129,8 +129,16 @@ export interface CalendarException {
 export interface Semester {
   id: string
   label: string
-  startDate: string // ISO yyyy-mm-dd, first possible meeting date
-  endDate: string // ISO yyyy-mm-dd, last possible meeting date
+  startDate: string // ISO yyyy-mm-dd — when classes begin; first possible meeting date
+  endDate: string // ISO yyyy-mm-dd — when classes end; last possible meeting date
+  /** Widens the printed/projected grid to start earlier than `startDate` (e.g. to show
+   * a few blank days before classes begin) — those extra days render blank, never
+   * assignable to a topic. Ignored (falls back to `startDate`) if it's actually later
+   * than `startDate`, so the grid can never accidentally clip real class sessions. */
+  scheduleStartDate?: string
+  /** Same idea as `scheduleStartDate`, for extending past `endDate`. Ignored (falls
+   * back to `endDate`) if it's actually earlier than `endDate`. */
+  scheduleEndDate?: string
   exceptions: CalendarException[]
   collegeEvents: CollegeEvent[]
   /** The `/<this>/…` segment of a schedule's URL. Defaults to a slugified `label` when unset. */
@@ -169,7 +177,8 @@ export interface Term {
  * A Term merged with its Semester's shared calendar — the flat shape the schedule
  * engine and grid actually render. Built by `resolveTerm()`; never stored directly.
  */
-export type ResolvedTerm = Term & Pick<Semester, 'label' | 'startDate' | 'endDate' | 'exceptions' | 'collegeEvents'>
+export type ResolvedTerm = Term &
+  Pick<Semester, 'label' | 'startDate' | 'endDate' | 'scheduleStartDate' | 'scheduleEndDate' | 'exceptions' | 'collegeEvents'>
 
 export function resolveTerm(term: Term, semester: Semester): ResolvedTerm {
   return {
@@ -177,6 +186,8 @@ export function resolveTerm(term: Term, semester: Semester): ResolvedTerm {
     label: semester.label,
     startDate: semester.startDate,
     endDate: semester.endDate,
+    scheduleStartDate: semester.scheduleStartDate,
+    scheduleEndDate: semester.scheduleEndDate,
     exceptions: semester.exceptions,
     collegeEvents: semester.collegeEvents,
   }

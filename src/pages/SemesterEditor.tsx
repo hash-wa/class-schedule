@@ -156,12 +156,35 @@ function SemesterSettings({ semester, onChange }: { semester: Semester; onChange
           <input value={semester.label} onChange={(e) => onChange({ label: e.target.value })} />
         </label>
         <label>
-          Start date
+          Classes start date
           <input type="date" value={semester.startDate} onChange={(e) => onChange({ startDate: e.target.value })} />
+          <span className="field-hint">First date a class can actually be held.</span>
         </label>
         <label>
-          End date
+          Classes end date
           <input type="date" value={semester.endDate} onChange={(e) => onChange({ endDate: e.target.value })} />
+          <span className="field-hint">Last date a class can actually be held.</span>
+        </label>
+        <label>
+          Schedule start date
+          <input
+            type="date"
+            value={semester.scheduleStartDate ?? ''}
+            onChange={(e) => onChange({ scheduleStartDate: e.target.value || undefined })}
+          />
+          <span className="field-hint">
+            Optional — shows a few extra blank days before classes start on the printed/projected grid. Leave blank
+            to match classes start date.
+          </span>
+        </label>
+        <label>
+          Schedule end date
+          <input
+            type="date"
+            value={semester.scheduleEndDate ?? ''}
+            onChange={(e) => onChange({ scheduleEndDate: e.target.value || undefined })}
+          />
+          <span className="field-hint">Optional — same idea, for extra days shown after classes end.</span>
         </label>
         <label>
           URL slug

@@ -7,6 +7,7 @@ import {
   computeLectureNumbers,
   insertClassEvent,
   remapClassEventDates,
+  resolveScheduleRange,
 } from './scheduleEngine'
 
 function makeTopics(n: number): Topic[] {
@@ -347,5 +348,81 @@ describe('computeLectureNumberRanges — per-topic lecture number range', () => 
       undefined,
       { first: 5, last: 5 },
     ])
+  })
+})
+
+describe('resolveScheduleRange — widens the display range, never narrows it', () => {
+  it('uses the classes start/end when no schedule override is set', () => {
+    expect(resolveScheduleRange({ startDate: '2026-01-19', endDate: '2026-05-15' })).toEqual({
+      start: '2026-01-19',
+      end: '2026-05-15',
+    })
+  })
+
+  it('uses an earlier schedule start date and a later schedule end date', () => {
+    expect(
+      resolveScheduleRange({
+        startDate: '2026-01-19',
+        endDate: '2026-05-15',
+        scheduleStartDate: '2026-01-12',
+        scheduleEndDate: '2026-05-22',
+      }),
+    ).toEqual({ start: '2026-01-12', end: '2026-05-22' })
+  })
+
+  it('ignores a schedule date that would narrow the range instead of widening it', () => {
+    expect(
+      resolveScheduleRange({
+        startDate: '2026-01-19',
+        endDate: '2026-05-15',
+        scheduleStartDate: '2026-02-01', // later than classes start — would clip sessions
+        scheduleEndDate: '2026-04-01', // earlier than classes end — would clip sessions
+      }),
+    ).toEqual({ start: '2026-01-19', end: '2026-05-15' })
+  })
+})
+
+describe('buildSchedule — schedule start/end date pads the grid with blank, non-assignable days', () => {
+  it('adds extra blank weeks before classes start and after they end', () => {
+    const { rows } = buildSchedule(
+      baseTerm({
+        startDate: '2026-01-19', // Monday
+        endDate: '2026-01-30', // Friday, two weeks later
+        topics: makeTopics(6), // exactly fills Jan 19 - Jan 30 (MWF)
+        scheduleStartDate: '2026-01-12', // one week earlier
+        scheduleEndDate: '2026-02-06', // one week after classes end
+      }),
+    )
+
+    const bufferWeekBefore = rows.find((r) => r.label === 'W1')!
+    expect(bufferWeekBefore.cellsByWeekday.MON?.iso).toBe('2026-01-12')
+    expect(bufferWeekBefore.cellsByWeekday.MON?.topic).toBeUndefined()
+    expect(bufferWeekBefore.cellsByWeekday.MON?.isBuffer).toBe(true)
+
+    const firstClassWeek = rows.find((r) => r.label === 'W2')!
+    expect(firstClassWeek.cellsByWeekday.MON?.iso).toBe('2026-01-19')
+    expect(firstClassWeek.cellsByWeekday.MON?.topic?.title).toBe('Topic 1')
+    expect(firstClassWeek.cellsByWeekday.MON?.isBuffer).toBeUndefined()
+
+    const bufferWeekAfter = rows.find((r) => r.label === 'W4')!
+    expect(bufferWeekAfter.cellsByWeekday.MON?.iso).toBe('2026-02-02')
+    expect(bufferWeekAfter.cellsByWeekday.MON?.topic).toBeUndefined()
+    expect(bufferWeekAfter.cellsByWeekday.MON?.isBuffer).toBe(true)
+  })
+
+  it('does not add any buffer days when schedule dates are unset', () => {
+    const { rows } = buildSchedule(baseTerm())
+    const anyBuffer = rows.some((r) => Object.values(r.cellsByWeekday).some((c) => c?.isBuffer))
+    expect(anyBuffer).toBe(false)
+  })
+
+  it('does not add buffer days for a schedule range that would narrow the classes range', () => {
+    const { rows: withNarrowerOverride } = buildSchedule(
+      baseTerm({ scheduleStartDate: '2026-02-01', scheduleEndDate: '2026-04-01' }),
+    )
+    const { rows: withoutOverride } = buildSchedule(baseTerm())
+    expect(withNarrowerOverride.length).toBe(withoutOverride.length)
+    const anyBuffer = withNarrowerOverride.some((r) => Object.values(r.cellsByWeekday).some((c) => c?.isBuffer))
+    expect(anyBuffer).toBe(false)
   })
 })
