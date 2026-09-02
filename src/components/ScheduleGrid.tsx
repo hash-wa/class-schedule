@@ -5,7 +5,7 @@ import { Plus } from 'lucide-react'
 import { Fragment, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { LinkFieldEditor } from './LinkFieldEditor'
 import { Modal } from './Modal'
-import { resolveClassEventLabel } from '../lib/classEventLabels'
+import { defaultClassEventTooltip, resolveClassEventLabel, resolveClassEventTooltip } from '../lib/classEventLabels'
 import { resolveTopicLink } from '../lib/links'
 import { resolveSessionLabelLetter } from '../lib/sessionLabel'
 import {
@@ -149,6 +149,7 @@ function EventChip({
       {...(editable ? listeners : {})}
       className={`sg-class-event${editable ? ' sg-class-event--editable' : ''}${isOver ? ' sg-class-event--drop-over' : ''}`}
       style={{ ...colorStyle, opacity: isDragging ? 0.4 : 1, touchAction: editable ? 'none' : undefined }}
+      title={resolveClassEventTooltip(event, classEventLabels)}
       onClick={
         editable
           ? (e) => {
@@ -276,7 +277,7 @@ function Cell({
         </div>
       ) : resolvedLink ? (
         <a className="sg-title" href={resolvedLink} target="_blank" rel="noreferrer">
-          {topic.title}
+          <span className="sg-title-text">{topic.title}</span>
           {cell.spanPosition && <SpanBadge spanPosition={cell.spanPosition} />}
         </a>
       ) : (
@@ -856,6 +857,15 @@ function EventEditModal({
             </button>
           ))}
         </div>
+
+        <label className="sg-edit-title-label">
+          Tooltip
+          <input
+            value={draft.tooltip ?? ''}
+            onChange={(e) => patch({ tooltip: e.target.value })}
+            placeholder={defaultClassEventTooltip(draft, classEventLabels)}
+          />
+        </label>
 
         <p className="modal-hint">Tip: you can also drag the chip on the grid to move it to a different date.</p>
 

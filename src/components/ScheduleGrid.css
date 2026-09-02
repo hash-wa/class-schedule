@@ -343,14 +343,38 @@
 }
 
 .sg-title {
-  display: block;
+  display: inline-block;
+  max-width: 100%;
   font-weight: 700;
   font-size: 1.15em;
   color: var(--text-h);
-  text-decoration: underline;
-  text-underline-offset: 2px;
   line-height: 1.25;
   margin-top: 2px;
+  /* The underline lives on .sg-title-text instead (see below) — a topic spanning
+     multiple sessions also renders a span-count badge as a sibling inside this link,
+     and it shouldn't get underlined along with the title. */
+  border-bottom: none;
+  background-image: none;
+}
+
+/* Wraps just the title text (not any span-count badge next to it) so the animated
+   underline only ever sits under the actual title. */
+.sg-title-text {
+  display: inline-block;
+  line-height: 1;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background-image: linear-gradient(var(--accent), var(--accent));
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: 0% 1px;
+  transition:
+    background-size 0.25s ease,
+    border-color 0.25s ease;
+}
+
+a.sg-title:hover .sg-title-text {
+  background-size: 100% 1px;
+  border-bottom-color: transparent;
 }
 
 .sg-title--plain {
@@ -452,7 +476,8 @@
 
 .sg-callout a {
   color: #fed7aa;
-  text-decoration: underline;
+  border-bottom-color: color-mix(in srgb, #fed7aa 45%, transparent);
+  background-image: linear-gradient(#fed7aa, #fed7aa);
 }
 
 .sg-legend {

@@ -1,7 +1,7 @@
-/** Strips to a single uppercase letter — the shape a session label letter must take. */
+/** Caps length only — any text is otherwise allowed (not just a single capital
+ * letter), since it's just a short prefix concatenated with the session number. */
 export function sanitizeSessionLabelLetter(raw: string): string {
-  const letters = raw.replace(/[^a-zA-Z]/g, '')
-  return letters ? letters[0].toUpperCase() : ''
+  return raw.trim().slice(0, 6)
 }
 
 /** The letter prefixing auto-numbered sessions in the grid (e.g. "L1"), defaulting to "L". */

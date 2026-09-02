@@ -54,6 +54,8 @@ export interface ClassEvent {
   text: string
   labelId: string
   phase: EventPhase
+  /** Hover tooltip. Defaults to "<label name> <phase>" (e.g. "Homework due") when unset. */
+  tooltip?: string
 }
 
 /**

@@ -101,8 +101,31 @@ body {
   margin: 0;
 }
 
+/* A thin, subtle underline that's already visible at rest (border-bottom, hugging
+   just the text via inline-block) — on hover it hands off to a bolder single-color
+   line that sweeps in from the left, drawn as a background image so its width can
+   animate independently of the text (text-decoration can't be transitioned this way). */
 a {
+  display: inline-block;
+  /* Tight line-height so the border-bottom sits right at the text baseline instead of
+     several px below it (the page's own 1.45 line-height leaves a lot of empty space
+     under the glyphs otherwise). */
+  line-height: 1;
   color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background-image: linear-gradient(var(--accent), var(--accent));
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: 0% 1px;
+  transition:
+    background-size 0.25s ease,
+    border-color 0.25s ease;
+}
+
+a:hover {
+  background-size: 100% 1px;
+  border-bottom-color: transparent;
 }
 
 h1,
