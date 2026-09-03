@@ -1,11 +1,13 @@
 import { ArrowLeft, Check, Keyboard, Loader2, Save } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ConfirmButton } from '../components/ConfirmButton'
 import { IconButton } from '../components/IconButton'
 import { ShortcutsHelp } from '../components/ShortcutsHelp'
 import { dataApi } from '../data'
 import { useAuth } from '../hooks/useAuth'
 import { useKeyboardShortcuts, type Shortcut } from '../hooks/useKeyboardShortcuts'
+import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning'
 import { resolveCourseSlug, resolveSemesterSlug, slugify } from '../lib/slug'
 import type { CalendarException, Course, CollegeEvent, Semester, Term } from '../types'
 import '../styles/forms.css'
@@ -83,6 +85,7 @@ export function SemesterEditor() {
     { key: '?', description: 'Show keyboard shortcuts', handler: () => setShowHelp(true) },
   ]
   useKeyboardShortcuts(shortcuts, !showHelp)
+  useUnsavedChangesWarning(dirty)
 
   if (authLoading) return null
   if (!isEditor) return <p>You need to sign in as the schedule owner to edit.</p>
@@ -123,7 +126,10 @@ export function SemesterEditor() {
       <ExceptionsManager semester={semester} onChange={update} />
 
       <section className="editor-section">
-        <h2>Course schedules using this semester ({schedules.length})</h2>
+        <h2>
+          Course schedules using this semester{' '}
+          {schedules.length > 0 && <span className="editor-count-badge">{schedules.length}</span>}
+        </h2>
         {schedules.length === 0 && <p className="section-hint">None yet — add one from the dashboard.</p>}
         {schedules.length > 0 && (
           <ul className="period-list">
@@ -150,53 +156,72 @@ function SemesterSettings({ semester, onChange }: { semester: Semester; onChange
     <section className="editor-section">
       <h2>Semester settings</h2>
       <p className="section-hint">Label and date range for this semester.</p>
-      <div className="field-grid">
-        <label>
-          Label
-          <input value={semester.label} onChange={(e) => onChange({ label: e.target.value })} />
-        </label>
-        <label>
-          Classes start date
-          <input type="date" value={semester.startDate} onChange={(e) => onChange({ startDate: e.target.value })} />
-          <span className="field-hint">First date a class can actually be held.</span>
-        </label>
-        <label>
-          Classes end date
-          <input type="date" value={semester.endDate} onChange={(e) => onChange({ endDate: e.target.value })} />
-          <span className="field-hint">Last date a class can actually be held.</span>
-        </label>
-        <label>
-          Schedule start date
-          <input
-            type="date"
-            value={semester.scheduleStartDate ?? ''}
-            onChange={(e) => onChange({ scheduleStartDate: e.target.value || undefined })}
-          />
-          <span className="field-hint">
-            Optional — shows a few extra blank days before classes start on the printed/projected grid. Leave blank
-            to match classes start date.
-          </span>
-        </label>
-        <label>
-          Schedule end date
-          <input
-            type="date"
-            value={semester.scheduleEndDate ?? ''}
-            onChange={(e) => onChange({ scheduleEndDate: e.target.value || undefined })}
-          />
-          <span className="field-hint">Optional — same idea, for extra days shown after classes end.</span>
-        </label>
-        <label>
-          URL slug
-          <input
-            value={semester.urlSlug ?? ''}
-            placeholder={slugify(semester.label)}
-            onChange={(e) => onChange({ urlSlug: slugify(e.target.value) })}
-          />
-          <span className="field-hint">
-            The semester part of every course's web address: /{semester.urlSlug?.trim() ? slugify(semester.urlSlug) : slugify(semester.label)}/…
-          </span>
-        </label>
+
+      <div className="field-subgroup">
+        <span className="field-subgroup-label">Identity</span>
+        <div className="field-grid">
+          <label>
+            Label
+            <input value={semester.label} onChange={(e) => onChange({ label: e.target.value })} />
+          </label>
+          <label>
+            URL slug
+            <input
+              value={semester.urlSlug ?? ''}
+              placeholder={slugify(semester.label)}
+              onChange={(e) => onChange({ urlSlug: slugify(e.target.value) })}
+            />
+            <span className="field-hint">
+              The semester part of every course's web address: /
+              {semester.urlSlug?.trim() ? slugify(semester.urlSlug) : slugify(semester.label)}/…
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div className="field-subgroup">
+        <span className="field-subgroup-label">Classes dates</span>
+        <p className="section-hint">The range topics can actually be assigned into.</p>
+        <div className="field-grid">
+          <label>
+            Classes start date
+            <input type="date" value={semester.startDate} onChange={(e) => onChange({ startDate: e.target.value })} />
+            <span className="field-hint">First date a class can actually be held.</span>
+          </label>
+          <label>
+            Classes end date
+            <input type="date" value={semester.endDate} onChange={(e) => onChange({ endDate: e.target.value })} />
+            <span className="field-hint">Last date a class can actually be held.</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="field-subgroup">
+        <span className="field-subgroup-label">Schedule display range (optional)</span>
+        <p className="section-hint">
+          Widens the printed/projected grid beyond the classes dates above — the extra days always render blank.
+          Leave both blank to match the classes dates exactly.
+        </p>
+        <div className="field-grid">
+          <label>
+            Schedule start date
+            <input
+              type="date"
+              value={semester.scheduleStartDate ?? ''}
+              onChange={(e) => onChange({ scheduleStartDate: e.target.value || undefined })}
+            />
+            <span className="field-hint">Shows a few extra blank days before classes start.</span>
+          </label>
+          <label>
+            Schedule end date
+            <input
+              type="date"
+              value={semester.scheduleEndDate ?? ''}
+              onChange={(e) => onChange({ scheduleEndDate: e.target.value || undefined })}
+            />
+            <span className="field-hint">Shows a few extra blank days after classes end.</span>
+          </label>
+        </div>
       </div>
     </section>
   )
@@ -238,7 +263,10 @@ function CollegeEventsManager({ semester, onChange }: { semester: Semester; onCh
       {semester.collegeEvents.length > 0 && (
         <ul className="period-list">
           {semester.collegeEvents.map((ev, i) => (
-            <li key={i}>
+            // Content-based (not positional) key — a positional key would let a
+            // ConfirmButton's "armed" state leak onto the next row after a delete
+            // shifts everything up, turning its next click into a silent delete.
+            <li key={`${ev.startDate}|${ev.endDate ?? ''}|${ev.text}`}>
               <input type="date" value={ev.startDate} onChange={(e) => updateEvent(i, { startDate: e.target.value })} />
               <span className="period-list-sep">–</span>
               <input
@@ -247,9 +275,7 @@ function CollegeEventsManager({ semester, onChange }: { semester: Semester; onCh
                 onChange={(e) => updateEvent(i, { endDate: e.target.value || undefined })}
               />
               <input className="period-list-text" value={ev.text} onChange={(e) => updateEvent(i, { text: e.target.value })} />
-              <button type="button" className="danger" onClick={() => removeEvent(i)}>
-                Remove
-              </button>
+              <ConfirmButton onConfirm={() => removeEvent(i)} />
             </li>
           ))}
         </ul>
@@ -312,7 +338,8 @@ function ExceptionsManager({ semester, onChange }: { semester: Semester; onChang
       {holidays.length > 0 && (
         <ul className="period-list">
           {holidays.map(({ exc, index }) => (
-            <li key={index}>
+            // Content-based (not positional) key — see the same note in CollegeEventsManager above.
+            <li key={`${exc.startDate}|${exc.endDate ?? ''}|${exc.reason}`}>
               <input
                 type="date"
                 value={exc.startDate}
@@ -329,9 +356,7 @@ function ExceptionsManager({ semester, onChange }: { semester: Semester; onChang
                 value={exc.reason}
                 onChange={(e) => updateHoliday(index, { reason: e.target.value })}
               />
-              <button type="button" className="danger" onClick={() => removeHoliday(index)}>
-                Remove
-              </button>
+              <ConfirmButton onConfirm={() => removeHoliday(index)} />
             </li>
           ))}
         </ul>

@@ -1,11 +1,13 @@
-import { CalendarDays, Check, Loader2, Pencil, Save } from 'lucide-react'
+import { CalendarDays, Check, Keyboard, Loader2, Pencil, Save } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { ConfirmButton } from '../components/ConfirmButton'
 import { IconButton } from '../components/IconButton'
 import { ShortcutsHelp } from '../components/ShortcutsHelp'
 import { dataApi } from '../data'
 import { useAuth } from '../hooks/useAuth'
 import { useKeyboardShortcuts, type Shortcut } from '../hooks/useKeyboardShortcuts'
+import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning'
 import { autoCourseInitials, sanitizeCourseAbbreviation } from '../lib/courseAbbreviation'
 import { sanitizeSessionLabelLetter } from '../lib/sessionLabel'
 import { resolveCourseSlug, resolveSemesterSlug, slugify } from '../lib/slug'
@@ -111,6 +113,7 @@ export function Editor() {
     { key: '?', description: 'Show keyboard shortcuts', handler: () => setShowHelp(true) },
   ]
   useKeyboardShortcuts(shortcuts, !showHelp)
+  useUnsavedChangesWarning(dirty && !term?.locked)
 
   if (authLoading) return null
   if (!isEditor) return <p>You need to sign in as the schedule owner to edit.</p>
@@ -138,6 +141,7 @@ export function Editor() {
             onClick={() => void handleSave()}
             disabled={!dirty || saving || term.locked}
           />
+          <IconButton icon={<Keyboard />} label="Keyboard shortcuts" onClick={() => setShowHelp(true)} />
         </div>
       </div>
 
@@ -237,7 +241,7 @@ function TermSettings({
       </div>
 
       <div className="field-subgroup">
-        <span className="field-subgroup-label">Display</span>
+        <span className="field-subgroup-label">Naming &amp; URL</span>
         <div className="field-grid">
           <label>
             Side menu name
@@ -277,6 +281,12 @@ function TermSettings({
             />
             <span className="field-hint">E.g. "L" for L1, L2… or "S" for S1, S2…</span>
           </label>
+        </div>
+      </div>
+
+      <div className="field-subgroup">
+        <span className="field-subgroup-label">Grid display</span>
+        <div className="field-grid">
           <label className="field-grid-wide">
             Legend text
             <textarea
@@ -347,9 +357,7 @@ function LinkBasesManager({ term, onChange }: { term: Term; onChange: (patch: Pa
                 onChange={(e) => updateBase(b.id, { label: e.target.value })}
               />
               <input className="linkbase-url" value={b.url} onChange={(e) => updateBase(b.id, { url: e.target.value })} />
-              <button type="button" className="danger" onClick={() => removeBase(b.id)}>
-                Remove
-              </button>
+              <ConfirmButton onConfirm={() => removeBase(b.id)} />
             </li>
           ))}
         </ul>
@@ -402,9 +410,7 @@ function ClassEventLabelsManager({ term, onChange }: { term: Term; onChange: (pa
             <li key={l.id}>
               <input type="color" value={l.color} onChange={(e) => updateLabel(l.id, { color: e.target.value })} />
               <input className="linkbase-label" value={l.name} onChange={(e) => updateLabel(l.id, { name: e.target.value })} />
-              <button type="button" className="danger" onClick={() => removeLabel(l.id)}>
-                Remove
-              </button>
+              <ConfirmButton onConfirm={() => removeLabel(l.id)} />
             </li>
           ))}
         </ul>
