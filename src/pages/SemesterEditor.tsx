@@ -19,6 +19,7 @@ export function SemesterEditor() {
   const navigate = useNavigate()
   const [semester, setSemester] = useState<Semester | null>(null)
   const [schedules, setSchedules] = useState<{ term: Term; course: Course | undefined }[]>([])
+  const [allSemesters, setAllSemesters] = useState<Semester[]>([])
   const [notFound, setNotFound] = useState(false)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -43,11 +44,18 @@ export function SemesterEditor() {
           .filter((t) => t.semesterId === s.id)
           .map((term) => ({ term, course: courses.find((c) => c.id === term.courseId) })),
       )
+      setAllSemesters(semesters)
     })()
   }, [semesterSlug])
 
+  // Same reasoning as the course-level check in Editor.tsx: two semesters sharing a
+  // resolved URL slug makes lookups silently pick one and strand the other.
+  const slugCollision = semester
+    ? allSemesters.find((s) => s.id !== semester.id && resolveSemesterSlug(s) === resolveSemesterSlug(semester))
+    : undefined
+
   async function handleSave() {
-    if (!semester) return
+    if (!semester || slugCollision) return
     setSaving(true)
     const { id: _id, ...data } = semester
     await dataApi.updateSemester(semester.id, data)
@@ -103,7 +111,7 @@ export function SemesterEditor() {
             label={saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
             variant={dirty ? 'primary' : undefined}
             onClick={() => void handleSave()}
-            disabled={!dirty || saving}
+            disabled={!dirty || saving || !!slugCollision}
           />
           <IconButton icon={<Keyboard />} label="Keyboard shortcuts" onClick={() => setShowHelp(true)} />
         </div>
@@ -121,7 +129,7 @@ export function SemesterEditor() {
         this semester is used.
       </p>
 
-      <SemesterSettings semester={semester} onChange={update} />
+      <SemesterSettings semester={semester} onChange={update} slugCollision={slugCollision} />
       <CollegeEventsManager semester={semester} onChange={update} />
       <ExceptionsManager semester={semester} onChange={update} />
 
@@ -151,7 +159,15 @@ export function SemesterEditor() {
   )
 }
 
-function SemesterSettings({ semester, onChange }: { semester: Semester; onChange: (patch: Partial<Semester>) => void }) {
+function SemesterSettings({
+  semester,
+  onChange,
+  slugCollision,
+}: {
+  semester: Semester
+  onChange: (patch: Partial<Semester>) => void
+  slugCollision: Semester | undefined
+}) {
   return (
     <section className="editor-section">
       <h2>Semester settings</h2>
@@ -166,14 +182,10 @@ function SemesterSettings({ semester, onChange }: { semester: Semester; onChange
           </label>
           <label>
             URL slug
-            <input
-              value={semester.urlSlug ?? ''}
-              placeholder={slugify(semester.label)}
-              onChange={(e) => onChange({ urlSlug: slugify(e.target.value) })}
-            />
+            <input value={semester.urlSlug ?? ''} placeholder={slugify(semester.label)} onChange={(e) => onChange({ urlSlug: e.target.value })} />
             <span className="field-hint">
-              The semester part of every course's web address: /
-              {semester.urlSlug?.trim() ? slugify(semester.urlSlug) : slugify(semester.label)}/…
+              The semester part of every course's web address: /{resolveSemesterSlug(semester)}/…
+              {slugCollision && <span className="field-error"> — already used by "{slugCollision.label}", pick a different one</span>}
             </span>
           </label>
         </div>

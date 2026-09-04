@@ -120,6 +120,11 @@
   flex-basis: 100%;
 }
 
+.field-error {
+  color: #dc2626;
+  font-weight: 600;
+}
+
 .day-picker input[type='checkbox'] {
   position: absolute;
   width: 1px;

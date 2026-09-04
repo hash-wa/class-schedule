@@ -6,7 +6,7 @@ import { useAuth } from '../hooks/useAuth'
 import { DEFAULT_CLASS_EVENT_LABELS } from '../lib/classEventLabels'
 import { resolveCourseAbbreviation, resolveSideMenuName } from '../lib/courseAbbreviation'
 import { remapClassEventDates } from '../lib/scheduleEngine'
-import { resolveCourseSlug, resolveSemesterSlug } from '../lib/slug'
+import { resolveCourseSlug, resolveSemesterSlug, slugify } from '../lib/slug'
 import { WEEKDAY_ORDER, resolveTerm } from '../types'
 import type { Course, Semester, Term, Weekday } from '../types'
 import { IconButton } from './IconButton'
@@ -382,11 +382,19 @@ function NewScheduleModal({
     setMeetingDays((days) => (days.includes(day) ? days.filter((d) => d !== day) : [...days, day]))
   }
 
+  const isNewCourse = courseChoice === NEW_COURSE_VALUE
+  // A brand-new course with no URL slug of its own falls back to slugify(code) — if
+  // that collides with an existing course's resolved slug, the two become
+  // indistinguishable by URL and one of them turns unreachable. Catch it before
+  // creating, rather than after.
+  const codeSlugCollision =
+    isNewCourse && code.trim() ? courses.find((c) => resolveCourseSlug(c) === slugify(code.trim())) : undefined
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const isNewCourse = courseChoice === NEW_COURSE_VALUE
     if (isNewCourse && (!code.trim() || !title.trim())) return
     if (meetingDays.length === 0) return
+    if (codeSlugCollision) return
     setSaving(true)
     const courseId = isNewCourse
       ? await dataApi.createCourse({ code: code.trim(), title: title.trim(), institution: institution.trim() })
@@ -422,6 +430,11 @@ function NewScheduleModal({
           <>
             <label>
               Course code <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. COMP/STAT212" />
+              {codeSlugCollision && (
+                <span className="field-error">
+                  Its URL would collide with "{codeSlugCollision.code}" — try a different code.
+                </span>
+              )}
             </label>
             <label>
               Title <input value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -443,7 +456,7 @@ function NewScheduleModal({
           <button type="button" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="btn-primary" disabled={saving}>
+          <button type="submit" className="btn-primary" disabled={saving || !!codeSlugCollision}>
             Create schedule
           </button>
         </div>

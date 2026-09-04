@@ -23,6 +23,7 @@ export function Editor() {
   const [course, setCourse] = useState<Course | null>(null)
   const [term, setTerm] = useState<Term | null>(null)
   const [semester, setSemester] = useState<Semester | null>(null)
+  const [allCourses, setAllCourses] = useState<Course[]>([])
   const [notFound, setNotFound] = useState(false)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -47,11 +48,17 @@ export function Editor() {
       setCourse(c)
       setTerm(t)
       setSemester(s)
+      setAllCourses(courses)
     })()
   }, [semesterSlug, courseSlug])
 
+  // Two courses resolving to the same URL slug is silently ambiguous — whichever one
+  // a slug lookup happens to find first "wins" and the other becomes unreachable, which
+  // is exactly what happened to make an existing schedule look like it had vanished.
+  const slugCollision = course ? allCourses.find((co) => co.id !== course.id && resolveCourseSlug(co) === resolveCourseSlug(course)) : undefined
+
   async function handleSave() {
-    if (!term || !course || !semester) return
+    if (!term || !course || !semester || slugCollision) return
     setSaving(true)
     const { id: _id, courseId: _courseId, ...data } = term
     await Promise.all([
@@ -139,7 +146,7 @@ export function Editor() {
             label={saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
             className={dirty ? 'editor-save-btn--active' : undefined}
             onClick={() => void handleSave()}
-            disabled={!dirty || saving || term.locked}
+            disabled={!dirty || saving || term.locked || !!slugCollision}
           />
           <IconButton icon={<Keyboard />} label="Keyboard shortcuts" onClick={() => setShowHelp(true)} />
         </div>
@@ -162,7 +169,7 @@ export function Editor() {
       )}
 
       <fieldset className="editor-fieldset" disabled={term.locked}>
-        <TermSettings term={term} onChange={update} course={course} onCourseChange={updateCourse} />
+        <TermSettings term={term} onChange={update} course={course} onCourseChange={updateCourse} slugCollision={slugCollision} />
         <LinkBasesManager term={term} onChange={update} />
         <ClassEventLabelsManager term={term} onChange={update} />
       </fieldset>
@@ -180,11 +187,13 @@ function TermSettings({
   onChange,
   course,
   onCourseChange,
+  slugCollision,
 }: {
   term: Term
   onChange: (patch: Partial<Term>) => void
   course: Course
   onCourseChange: (patch: Partial<Course>) => void
+  slugCollision: Course | undefined
 }) {
   function toggleDay(day: Weekday) {
     const days = term.meetingDays.includes(day)
@@ -266,10 +275,11 @@ function TermSettings({
             <input
               value={course.urlSlug ?? ''}
               placeholder={slugify(course.code)}
-              onChange={(e) => onCourseChange({ urlSlug: slugify(e.target.value) })}
+              onChange={(e) => onCourseChange({ urlSlug: e.target.value })}
             />
             <span className="field-hint">
-              The course part of this schedule's web address: /…/{course.urlSlug?.trim() ? slugify(course.urlSlug) : slugify(course.code)}
+              The course part of this schedule's web address: /…/{resolveCourseSlug(course)}
+              {slugCollision && <span className="field-error"> — already used by {slugCollision.code}, pick a different one</span>}
             </span>
           </label>
           <label>
