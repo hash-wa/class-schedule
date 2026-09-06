@@ -248,7 +248,7 @@ function CollegeEventsManager({ semester, onChange }: { semester: Semester; onCh
     if (!startDate || !text.trim()) return
     const next: CollegeEvent[] = [
       ...semester.collegeEvents,
-      { startDate, endDate: endDate || undefined, text: text.trim() },
+      { id: crypto.randomUUID(), startDate, endDate: endDate || undefined, text: text.trim() },
     ]
     next.sort((a, b) => a.startDate.localeCompare(b.startDate))
     onChange({ collegeEvents: next })
@@ -275,10 +275,11 @@ function CollegeEventsManager({ semester, onChange }: { semester: Semester; onCh
       {semester.collegeEvents.length > 0 && (
         <ul className="period-list">
           {semester.collegeEvents.map((ev, i) => (
-            // Content-based (not positional) key — a positional key would let a
+            // Stable id (not index, not content) — an index key would let a
             // ConfirmButton's "armed" state leak onto the next row after a delete
-            // shifts everything up, turning its next click into a silent delete.
-            <li key={`${ev.startDate}|${ev.endDate ?? ''}|${ev.text}`}>
+            // shifts everything up; a content key that includes `text` would remount
+            // (and lose focus on) this row's own text input after every keystroke.
+            <li key={ev.id ?? i}>
               <input type="date" value={ev.startDate} onChange={(e) => updateEvent(i, { startDate: e.target.value })} />
               <span className="period-list-sep">–</span>
               <input
@@ -323,7 +324,7 @@ function ExceptionsManager({ semester, onChange }: { semester: Semester; onChang
     if (!startDate || !reason.trim()) return
     const next: CalendarException[] = [
       ...semester.exceptions,
-      { startDate, endDate: endDate || undefined, reason: reason.trim(), style: 'holiday' },
+      { id: crypto.randomUUID(), startDate, endDate: endDate || undefined, reason: reason.trim(), style: 'holiday' },
     ]
     next.sort((a, b) => a.startDate.localeCompare(b.startDate))
     onChange({ exceptions: next })
@@ -350,8 +351,8 @@ function ExceptionsManager({ semester, onChange }: { semester: Semester; onChang
       {holidays.length > 0 && (
         <ul className="period-list">
           {holidays.map(({ exc, index }) => (
-            // Content-based (not positional) key — see the same note in CollegeEventsManager above.
-            <li key={`${exc.startDate}|${exc.endDate ?? ''}|${exc.reason}`}>
+            // Stable id key — see the same note in CollegeEventsManager above.
+            <li key={exc.id ?? index}>
               <input
                 type="date"
                 value={exc.startDate}

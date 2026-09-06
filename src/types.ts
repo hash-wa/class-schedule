@@ -108,6 +108,9 @@ export interface LinkBase {
  * Omit `endDate` for a single-day event.
  */
 export interface CollegeEvent {
+  /** Stable identity for React list rendering only — nothing in the schedule engine
+   * reads it, so older data missing it (backfilled by `normalizeSemester`) is fine. */
+  id?: string
   startDate: string // ISO yyyy-mm-dd
   endDate?: string // ISO yyyy-mm-dd, inclusive; unset means a single-day event on startDate
   text: string
@@ -121,6 +124,8 @@ export interface CollegeEvent {
 export type ExceptionStyle = 'holiday' | 'cancellation' | 'extra' | 'other'
 
 export interface CalendarException {
+  /** Same reasoning as `CollegeEvent.id` above — UI-only, engine-irrelevant. */
+  id?: string
   startDate: string // ISO yyyy-mm-dd
   endDate?: string // ISO yyyy-mm-dd, inclusive; unset means a single day
   reason: string

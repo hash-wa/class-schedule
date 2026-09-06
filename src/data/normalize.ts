@@ -4,18 +4,24 @@ import { assignTopics } from '../lib/scheduleEngine'
 import { resolveTerm } from '../types'
 import type { CalendarException, ClassEvent, CollegeEvent, EventPhase, Semester, Term, Topic } from '../types'
 
-/** CollegeEvent used to have a single `date` field before start/end date ranges existed. */
+/** CollegeEvent used to have a single `date` field before start/end date ranges existed.
+ * Also backfills `id` for older entries saved before it existed — a stable id (rather
+ * than the entry's own position or content) is what lets its React list row survive
+ * edits/reordering without losing input focus or another row's delete-confirm state. */
 function normalizeCollegeEvent(raw: CollegeEvent & { date?: string }): CollegeEvent {
   return {
+    id: raw.id ?? crypto.randomUUID(),
     startDate: raw.startDate ?? raw.date!,
     endDate: raw.endDate,
     text: raw.text,
   }
 }
 
-/** CalendarException used to have a single `date` field before start/end date ranges existed. */
+/** CalendarException used to have a single `date` field before start/end date ranges existed.
+ * Same `id` backfill reasoning as `normalizeCollegeEvent` above. */
 function normalizeException(raw: CalendarException & { date?: string }): CalendarException {
   return {
+    id: raw.id ?? crypto.randomUUID(),
     startDate: raw.startDate ?? raw.date!,
     endDate: raw.endDate,
     reason: raw.reason,
