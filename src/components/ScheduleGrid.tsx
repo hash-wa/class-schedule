@@ -13,7 +13,9 @@ import {
   buildCollegeEventsByDate,
   buildSchedule,
   insertClassEvent,
+  repeatClassEvent,
   type AssignedCell,
+  type ClassEventRepeatCadence,
   type SpanPosition,
   type WeekRow,
 } from '../lib/scheduleEngine'
@@ -147,9 +149,9 @@ function EventChip({
       ref={setRefs}
       {...(editable ? attributes : {})}
       {...(editable ? listeners : {})}
-      className={`sg-class-event${editable ? ' sg-class-event--editable' : ''}${isOver ? ' sg-class-event--drop-over' : ''}`}
-      style={{ ...colorStyle, opacity: isDragging ? 0.4 : 1, touchAction: editable ? 'none' : undefined }}
-      title={resolveClassEventTooltip(event, classEventLabels)}
+      className={`sg-class-event${editable ? ' sg-class-event--editable' : ''}${isOver ? ' sg-class-event--drop-over' : ''}${event.hidden ? ' sg-class-event--hidden' : ''}`}
+      style={{ ...colorStyle, opacity: isDragging ? 0.4 : event.hidden ? 0.45 : 1, touchAction: editable ? 'none' : undefined }}
+      title={event.hidden ? `${resolveClassEventTooltip(event, classEventLabels)} (hidden from published schedule)` : resolveClassEventTooltip(event, classEventLabels)}
       onClick={
         editable
           ? (e) => {
@@ -159,7 +161,8 @@ function EventChip({
           : undefined
       }
     >
-      {event.text} {event.phase}
+      {event.text}
+      {!event.hidePhaseWord && ` ${event.phase}`}
     </span>
   )
 }
@@ -175,10 +178,13 @@ function ClassEventChips({
   editable: boolean
   onEdit: (event: ClassEvent) => void
 }) {
-  if (events.length === 0) return null
+  // A hidden event stays visible (faded) while editing so it can still be found and
+  // un-hidden, but never renders in the read-only/public schedule at all.
+  const visible = editable ? events : events.filter((e) => !e.hidden)
+  if (visible.length === 0) return null
   return (
     <div className="sg-class-events">
-      {events.map((event) => (
+      {visible.map((event) => (
         <EventChip key={event.id} event={event} classEventLabels={classEventLabels} editable={editable} onEdit={onEdit} />
       ))}
     </div>
@@ -486,10 +492,11 @@ export function ScheduleGrid({ course, term, editable, blockCount = 2, fillHeigh
     setEditingEvent({ event, isNew: false })
   }
 
-  function handleSaveEvent(event: ClassEvent) {
+  function handleSaveEvent(event: ClassEvent, repeat?: { cadence: ClassEventRepeatCadence; count: number }) {
     if (!onClassEventsChange) return
     if (editingEvent?.isNew) {
-      onClassEventsChange(insertClassEvent(term.classEvents, event))
+      const copies = repeat && repeat.count > 1 ? repeatClassEvent(term, event, repeat.cadence, repeat.count) : [event]
+      onClassEventsChange(copies.reduce((events, copy) => insertClassEvent(events, copy), term.classEvents))
     } else {
       onClassEventsChange(term.classEvents.map((e) => (e.id === event.id ? event : e)))
     }
@@ -635,6 +642,7 @@ export function ScheduleGrid({ course, term, editable, blockCount = 2, fillHeigh
             event={editingEvent.event}
             isNew={editingEvent.isNew}
             classEventLabels={term.classEventLabels}
+            meetingDaysCount={term.meetingDays.length}
             onSave={handleSaveEvent}
             onDelete={editingEvent.isNew ? undefined : handleDeleteEvent}
             onClose={() => setEditingEvent(null)}
@@ -776,6 +784,7 @@ function EventEditModal({
   event,
   isNew,
   classEventLabels,
+  meetingDaysCount,
   onSave,
   onDelete,
   onClose,
@@ -783,12 +792,15 @@ function EventEditModal({
   event: ClassEvent
   isNew: boolean
   classEventLabels: ClassEventLabel[]
-  onSave: (event: ClassEvent) => void
+  meetingDaysCount: number
+  onSave: (event: ClassEvent, repeat?: { cadence: ClassEventRepeatCadence; count: number }) => void
   onDelete?: () => void
   onClose: () => void
 }) {
   const [draft, setDraft] = useState<ClassEvent>(event)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [repeatCadence, setRepeatCadence] = useState<ClassEventRepeatCadence>(meetingDaysCount > 1 ? 'week' : 'session')
+  const [repeatCount, setRepeatCount] = useState(1)
 
   function patch(p: Partial<ClassEvent>) {
     setDraft((d) => ({ ...d, ...p }))
@@ -797,7 +809,7 @@ function EventEditModal({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!draft.text.trim() || !draft.labelId) return
-    onSave({ ...draft, text: draft.text.trim() })
+    onSave({ ...draft, text: draft.text.trim() }, isNew ? { cadence: repeatCadence, count: repeatCount } : undefined)
   }
 
   const selectedLabel = resolveClassEventLabel(draft.labelId, classEventLabels)
@@ -821,7 +833,8 @@ function EventEditModal({
             />
           </label>
           <span className="sg-class-event sg-event-preview" style={previewStyle}>
-            {draft.text.trim() || 'Text'} {draft.phase}
+            {draft.text.trim() || 'Text'}
+            {!draft.hidePhaseWord && ` ${draft.phase}`}
           </span>
         </div>
 
@@ -845,18 +858,78 @@ function EventEditModal({
           ))}
         </div>
 
-        <div className="sg-phase-toggle" role="group" aria-label="Phase">
-          {EVENT_PHASES.map((p) => (
-            <button
-              key={p}
-              type="button"
-              className={`sg-phase-btn${draft.phase === p ? ' sg-phase-btn--active' : ''}`}
-              onClick={() => patch({ phase: p })}
-            >
-              {p}
-            </button>
-          ))}
+        <div className="sg-edit-row">
+          <div className="sg-phase-toggle" role="group" aria-label="Phase">
+            {EVENT_PHASES.map((p) => (
+              <button
+                key={p}
+                type="button"
+                className={`sg-phase-btn${draft.phase === p ? ' sg-phase-btn--active' : ''}`}
+                onClick={() => patch({ phase: p })}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+
+          <label className="sg-edit-checkbox">
+            <input
+              type="checkbox"
+              checked={!!draft.hidePhaseWord}
+              onChange={(e) => patch({ hidePhaseWord: e.target.checked })}
+            />
+            Hide "due"/"up"
+          </label>
+
+          <label className="sg-edit-checkbox">
+            <input type="checkbox" checked={!!draft.hidden} onChange={(e) => patch({ hidden: e.target.checked })} />
+            Hide tag
+          </label>
         </div>
+        {draft.hidden && (
+          <p className="modal-hint">Kept and still editable here, but won't show on the published schedule.</p>
+        )}
+
+        {isNew && (
+          <div className="sg-edit-row">
+            <label className="sg-edit-stepper-label">
+              Repeat
+              <select value={repeatCadence} onChange={(e) => setRepeatCadence(e.target.value as ClassEventRepeatCadence)}>
+                <option value="session">Every class</option>
+                {meetingDaysCount > 1 && <option value="week">Every week</option>}
+              </select>
+            </label>
+            <label className="sg-edit-stepper-label" title="Total tagged sessions, including this one">
+              Times
+              <span className="sg-stepper">
+                <button
+                  type="button"
+                  className="sg-stepper-btn"
+                  disabled={repeatCount <= 1}
+                  onClick={() => setRepeatCount((c) => Math.max(1, c - 1))}
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  className="sg-stepper-input"
+                  min={1}
+                  max={30}
+                  value={repeatCount}
+                  onChange={(e) => setRepeatCount(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
+                />
+                <button
+                  type="button"
+                  className="sg-stepper-btn"
+                  disabled={repeatCount >= 30}
+                  onClick={() => setRepeatCount((c) => Math.min(30, c + 1))}
+                >
+                  +
+                </button>
+              </span>
+            </label>
+          </div>
+        )}
 
         <label className="sg-edit-title-label">
           Tooltip

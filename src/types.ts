@@ -56,6 +56,14 @@ export interface ClassEvent {
   phase: EventPhase
   /** Hover tooltip. Defaults to "<label name> <phase>" (e.g. "Homework due") when unset. */
   tooltip?: string
+  /** When true, the tag is kept (still editable/draggable in edit mode, shown faded)
+   * but never rendered in the read-only/public view — e.g. for a due date that's
+   * passed and no longer worth calling out, without losing the record of it. */
+  hidden?: boolean
+  /** When true, the chip shows just its text (e.g. "H1") without the trailing
+   * "due"/"up" word — the fill-vs-outline styling still reflects `phase` either way,
+   * and the hover tooltip still spells it out. */
+  hidePhaseWord?: boolean
 }
 
 /**

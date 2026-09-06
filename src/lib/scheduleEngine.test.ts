@@ -7,6 +7,7 @@ import {
   computeLectureNumbers,
   insertClassEvent,
   remapClassEventDates,
+  repeatClassEvent,
   resolveScheduleRange,
 } from './scheduleEngine'
 
@@ -214,6 +215,62 @@ describe('insertClassEvent — default placement puts "due" chips before "up" ch
     const events = [ev('a', '2026-01-19', 'up'), ev('b', '2026-01-21', 'due')]
     const result = insertClassEvent(events, ev('c', '2026-01-19', 'due'))
     expect(result.map((e) => e.id)).toEqual(['c', 'a', 'b'])
+  })
+})
+
+describe('repeatClassEvent — expands one event into several copies', () => {
+  function ev(date: string): ClassEvent {
+    return { id: 'base', date, text: 'H1', labelId: 'l1', phase: 'due' }
+  }
+
+  it('"session" cadence steps to the very next class meeting each time (MWF: Mon, Wed, Fri)', () => {
+    const result = repeatClassEvent(baseTerm(), ev('2026-01-19'), 'session', 3)
+    expect(result.map((e) => e.date)).toEqual(['2026-01-19', '2026-01-21', '2026-01-23'])
+  })
+
+  it('"week" cadence steps by real calendar weeks, landing on the same weekday', () => {
+    const result = repeatClassEvent(baseTerm(), ev('2026-01-19'), 'week', 3)
+    expect(result.map((e) => e.date)).toEqual(['2026-01-19', '2026-01-26', '2026-02-02'])
+  })
+
+  it('"week" cadence skips (not substitutes) a week whose date was cancelled, and keeps the weekday for the rest', () => {
+    // Cancel 2026-01-26 (the Monday one week after the base date) — a plain
+    // "N sessions later" implementation would have every later repeat drift onto the
+    // wrong weekday once an earlier session disappears from the slot sequence; this
+    // guards against that regression.
+    const exceptions: CalendarException[] = [{ startDate: '2026-01-26', reason: 'Holiday', style: 'holiday' }]
+    const result = repeatClassEvent(baseTerm({ exceptions }), ev('2026-01-19'), 'week', 3)
+    expect(result.map((e) => e.date)).toEqual(['2026-01-19', '2026-02-02', '2026-02-09'])
+  })
+
+  it('count=1 returns just the original event, untouched', () => {
+    const result = repeatClassEvent(baseTerm(), ev('2026-01-19'), 'session', 1)
+    expect(result).toEqual([ev('2026-01-19')])
+  })
+
+  it('the first copy keeps the original id; later copies get new, distinct ids', () => {
+    const result = repeatClassEvent(baseTerm(), ev('2026-01-19'), 'session', 3)
+    expect(result[0].id).toBe('base')
+    expect(result[1].id).not.toBe('base')
+    expect(result[2].id).not.toBe('base')
+    expect(result[1].id).not.toBe(result[2].id)
+  })
+
+  it('"session" cadence stops early (fewer than count) if the term runs out of sessions', () => {
+    const shortTerm = baseTerm({ endDate: '2026-01-21' }) // only Mon 1/19 and Wed 1/21
+    const result = repeatClassEvent(shortTerm, ev('2026-01-19'), 'session', 5)
+    expect(result.map((e) => e.date)).toEqual(['2026-01-19', '2026-01-21'])
+  })
+
+  it('"week" cadence stops early (fewer than count) if the term ends before enough weeks pass', () => {
+    const shortTerm = baseTerm({ endDate: '2026-01-26' })
+    const result = repeatClassEvent(shortTerm, ev('2026-01-19'), 'week', 5)
+    expect(result.map((e) => e.date)).toEqual(['2026-01-19', '2026-01-26'])
+  })
+
+  it('returns the event unchanged if its date is not a real meeting session', () => {
+    const result = repeatClassEvent(baseTerm(), ev('2026-01-20'), 'session', 3) // Tuesday, not in MWF
+    expect(result).toEqual([ev('2026-01-20')])
   })
 })
 

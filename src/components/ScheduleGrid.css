@@ -417,6 +417,15 @@ a.sg-title:hover .sg-title-text {
   outline-offset: 1px;
 }
 
+/* Only ever rendered in edit mode (filtered out entirely from the read-only/public
+   view). Uses `outline` rather than `border` so it reads the same regardless of the
+   due/up phase's own inline border/background styling (a filled "due" chip's real
+   border is already transparent). */
+.sg-class-event--hidden {
+  outline: 1px dashed var(--text-muted);
+  outline-offset: 1px;
+}
+
 .sg-notice {
   display: block;
   margin-top: 3px;

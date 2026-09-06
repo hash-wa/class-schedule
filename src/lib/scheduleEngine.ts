@@ -150,6 +150,54 @@ export function insertClassEvent(events: ClassEvent[], newEvent: ClassEvent): Cl
   return [...events.slice(0, insertAt), newEvent, ...events.slice(insertAt)]
 }
 
+export type ClassEventRepeatCadence = 'session' | 'week'
+
+/**
+ * Expands one class event into up to `count` independent copies (including the
+ * original). Each copy is a fully independent event (own id) — there's no ongoing
+ * "series" relationship, so editing or deleting one later never affects the others.
+ *
+ * - `'session'` steps to the very next meeting each time (e.g. every class on an MWF
+ *   term). Stops early, returning fewer than `count`, if the term runs out of
+ *   sessions first.
+ * - `'week'` steps by real calendar weeks (+7 days) so it lands on the same weekday
+ *   every time — deliberately *not* "N sessions later", since a cancelled session
+ *   anywhere earlier in the term would otherwise shift later weeks off their weekday
+ *   (verified against real MWF data with a mid-term cancellation). A week whose date
+ *   isn't an actual session (e.g. a holiday) is skipped, not substituted, and doesn't
+ *   count toward `count`.
+ */
+export function repeatClassEvent(
+  term: Pick<ResolvedTerm, 'startDate' | 'endDate' | 'meetingDays' | 'exceptions'>,
+  event: ClassEvent,
+  cadence: ClassEventRepeatCadence,
+  count: number,
+): ClassEvent[] {
+  const slots = buildSlotDates(term)
+  const baseIndex = slots.findIndex((s) => s.iso === event.date)
+  if (baseIndex === -1) return [event]
+
+  const events: ClassEvent[] = []
+
+  if (cadence === 'session') {
+    for (let i = 0; i < count; i++) {
+      const slot = slots[baseIndex + i]
+      if (!slot) break
+      events.push({ ...event, id: i === 0 ? event.id : crypto.randomUUID(), date: slot.iso })
+    }
+    return events
+  }
+
+  const slotByIso = new Map(slots.map((s) => [s.iso, s]))
+  const base = parseISO(event.date)
+  const maxWeeksToCheck = count * 6 // generous cap so a run of holidays can't loop forever
+  for (let week = 0; events.length < count && week < maxWeeksToCheck; week++) {
+    const slot = slotByIso.get(isoDate(addDays(base, week * 7)))
+    if (slot) events.push({ ...event, id: events.length === 0 ? event.id : crypto.randomUUID(), date: slot.iso })
+  }
+  return events
+}
+
 /**
  * Groups class events by the single date each is tagged on — several can land on
  * the same session. Independent of `assignTopics`: a session shows whatever events
