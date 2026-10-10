@@ -1,28 +1,25 @@
-import { resolveTopicLink } from '../lib/links'
+import { resolveLink } from '../lib/links'
 import type { LinkBase } from '../types'
 import './LinkFieldEditor.css'
 
 export function LinkFieldEditor({
   linkBases,
-  titleLink,
-  titleLinkBaseId,
+  url,
+  baseId,
   onChange,
 }: {
   linkBases: LinkBase[]
-  titleLink?: string
-  titleLinkBaseId?: string
-  onChange: (patch: { titleLink?: string; titleLinkBaseId?: string }) => void
+  url?: string
+  baseId?: string
+  onChange: (patch: { url?: string; baseId?: string }) => void
 }) {
-  const resolved = resolveTopicLink({ titleLink, titleLinkBaseId }, linkBases)
+  const resolved = resolveLink(url, baseId, linkBases)
 
   return (
     <div className="link-field">
       <label>
         Link base
-        <select
-          value={titleLinkBaseId ?? ''}
-          onChange={(e) => onChange({ titleLinkBaseId: e.target.value || undefined })}
-        >
+        <select value={baseId ?? ''} onChange={(e) => onChange({ baseId: e.target.value || undefined })}>
           <option value="">(none — full URL)</option>
           {linkBases.map((b) => (
             <option key={b.id} value={b.id}>
@@ -32,11 +29,11 @@ export function LinkFieldEditor({
         </select>
       </label>
       <label className="link-field-path">
-        {titleLinkBaseId ? 'Path' : 'Link'}
+        {baseId ? 'Path' : 'Link'}
         <input
-          value={titleLink ?? ''}
-          onChange={(e) => onChange({ titleLink: e.target.value })}
-          placeholder={titleLinkBaseId ? 'adv-spa.html' : 'https://…'}
+          value={url ?? ''}
+          onChange={(e) => onChange({ url: e.target.value })}
+          placeholder={baseId ? 'adv-spa.html' : 'https://…'}
         />
       </label>
       {resolved && <div className="link-field-preview">{resolved}</div>}

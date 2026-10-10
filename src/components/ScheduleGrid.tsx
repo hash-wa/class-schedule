@@ -6,7 +6,7 @@ import { Fragment, useLayoutEffect, useMemo, useRef, useState, type ReactNode } 
 import { LinkFieldEditor } from './LinkFieldEditor'
 import { Modal } from './Modal'
 import { defaultClassEventTooltip, resolveClassEventLabel, resolveClassEventTooltip } from '../lib/classEventLabels'
-import { resolveTopicLink } from '../lib/links'
+import { resolveLink, resolveTopicLink } from '../lib/links'
 import { resolveSessionLabelLetter } from '../lib/sessionLabel'
 import {
   buildClassEventsByDate,
@@ -14,6 +14,8 @@ import {
   buildSchedule,
   insertClassEvent,
   repeatClassEvent,
+  joinClassEventsToGroup,
+  syncLinkedClassEventGroup,
   type AssignedCell,
   type ClassEventRepeatCadence,
   type SpanPosition,
@@ -114,11 +116,13 @@ function DraggableTopic({ topicId, children }: { topicId: string; children: Reac
 function EventChip({
   event,
   classEventLabels,
+  linkBases,
   editable,
   onEdit,
 }: {
   event: ClassEvent
   classEventLabels: ClassEventLabel[]
+  linkBases: LinkBase[]
   editable: boolean
   onEdit: (event: ClassEvent) => void
 }) {
@@ -143,38 +147,60 @@ function EventChip({
     event.phase === 'due'
       ? { background: eventLabel.color, borderColor: 'transparent', color: '#fff' }
       : { background: 'transparent', borderColor: eventLabel.color, color: eventLabel.color }
+  // The chip only ever links out on the published view — while editing, clicking it
+  // always opens the edit modal instead (same as a topic cell).
+  const resolvedLink = !editable ? resolveLink(event.link, event.linkBaseId, linkBases) : undefined
 
-  return (
-    <span
-      ref={setRefs}
-      {...(editable ? attributes : {})}
-      {...(editable ? listeners : {})}
-      className={`sg-class-event${editable ? ' sg-class-event--editable' : ''}${isOver ? ' sg-class-event--drop-over' : ''}${event.hidden ? ' sg-class-event--hidden' : ''}`}
-      style={{ ...colorStyle, opacity: isDragging ? 0.4 : event.hidden ? 0.45 : 1, touchAction: editable ? 'none' : undefined }}
-      title={event.hidden ? `${resolveClassEventTooltip(event, classEventLabels)} (hidden from published schedule)` : resolveClassEventTooltip(event, classEventLabels)}
-      onClick={
-        editable
-          ? (e) => {
-              e.stopPropagation()
-              onEdit(event)
-            }
-          : undefined
-      }
-    >
+  const content = (
+    <>
       {event.text}
       {!event.hidePhaseWord && ` ${event.phase}`}
-    </span>
+    </>
   )
+  const sharedProps = {
+    ref: setRefs as (node: HTMLElement | null) => void,
+    ...(editable ? attributes : {}),
+    ...(editable ? listeners : {}),
+    className: `sg-class-event${editable ? ' sg-class-event--editable' : ''}${resolvedLink ? ' sg-class-event--link' : ''}${isOver ? ' sg-class-event--drop-over' : ''}${event.hidden ? ' sg-class-event--hidden' : ''}`,
+    style: { ...colorStyle, opacity: isDragging ? 0.4 : event.hidden ? 0.45 : 1, touchAction: editable ? 'none' : undefined },
+    title: event.hidden ? `${resolveClassEventTooltip(event, classEventLabels)} (hidden from published schedule)` : resolveClassEventTooltip(event, classEventLabels),
+  }
+
+  if (editable) {
+    return (
+      <span
+        {...sharedProps}
+        onClick={(e) => {
+          e.stopPropagation()
+          onEdit(event)
+        }}
+      >
+        {content}
+      </span>
+    )
+  }
+
+  if (resolvedLink) {
+    return (
+      <a {...sharedProps} href={resolvedLink} target="_blank" rel="noreferrer">
+        {content}
+      </a>
+    )
+  }
+
+  return <span {...sharedProps}>{content}</span>
 }
 
 function ClassEventChips({
   events,
   classEventLabels,
+  linkBases,
   editable,
   onEdit,
 }: {
   events: ClassEvent[]
   classEventLabels: ClassEventLabel[]
+  linkBases: LinkBase[]
   editable: boolean
   onEdit: (event: ClassEvent) => void
 }) {
@@ -185,7 +211,7 @@ function ClassEventChips({
   return (
     <div className="sg-class-events">
       {visible.map((event) => (
-        <EventChip key={event.id} event={event} classEventLabels={classEventLabels} editable={editable} onEdit={onEdit} />
+        <EventChip key={event.id} event={event} classEventLabels={classEventLabels} linkBases={linkBases} editable={editable} onEdit={onEdit} />
       ))}
     </div>
   )
@@ -255,7 +281,7 @@ function Cell({
       <div ref={setNodeRef} className={`sg-cell${dropClass}`} style={style}>
         <Line1 letter={letter} date={cell.date} collegeEvent={collegeEvent} />
         <div className={styleClass}>{cell.exception.reason}</div>
-        <ClassEventChips events={classEvents} classEventLabels={classEventLabels} editable={eventsEditable} onEdit={onEditEvent} />
+        <ClassEventChips events={classEvents} classEventLabels={classEventLabels} linkBases={linkBases} editable={eventsEditable} onEdit={onEditEvent} />
         {addEventButton}
       </div>
     )
@@ -292,7 +318,7 @@ function Cell({
           {cell.spanPosition && <SpanBadge spanPosition={cell.spanPosition} />}
         </div>
       )}
-      <ClassEventChips events={classEvents} classEventLabels={classEventLabels} editable={eventsEditable} onEdit={onEditEvent} />
+      <ClassEventChips events={classEvents} classEventLabels={classEventLabels} linkBases={linkBases} editable={eventsEditable} onEdit={onEditEvent} />
       {addEventButton}
     </div>
   )
@@ -492,14 +518,28 @@ export function ScheduleGrid({ course, term, editable, blockCount = 2, fillHeigh
     setEditingEvent({ event, isNew: false })
   }
 
-  function handleSaveEvent(event: ClassEvent, repeat?: { cadence: ClassEventRepeatCadence; count: number }) {
+  function handleSaveEvent(
+    event: ClassEvent,
+    repeat?: { cadence: ClassEventRepeatCadence; count: number },
+    newLinkedCounterpart?: ClassEvent,
+  ) {
     if (!onClassEventsChange) return
+    let events = term.classEvents
+
     if (editingEvent?.isNew) {
+      // Every copy keeps whatever group `event` (the one actually edited) belongs
+      // to — they're independent events, but sharing a group id is exactly what
+      // keeps a repeated series' text/label/link mirrored across all its occurrences.
       const copies = repeat && repeat.count > 1 ? repeatClassEvent(term, event, repeat.cadence, repeat.count) : [event]
-      onClassEventsChange(copies.reduce((events, copy) => insertClassEvent(events, copy), term.classEvents))
+      events = copies.reduce((acc, copy) => insertClassEvent(acc, copy), events)
     } else {
-      onClassEventsChange(term.classEvents.map((e) => (e.id === event.id ? event : e)))
+      events = events.map((e) => (e.id === event.id ? event : e))
     }
+
+    if (newLinkedCounterpart) events = insertClassEvent(events, newLinkedCounterpart)
+    events = syncLinkedClassEventGroup(events, event)
+
+    onClassEventsChange(events)
     setEditingEvent(null)
   }
 
@@ -507,6 +547,15 @@ export function ScheduleGrid({ course, term, editable, blockCount = 2, fillHeigh
     if (!onClassEventsChange || !editingEvent) return
     onClassEventsChange(term.classEvents.filter((e) => e.id !== editingEvent.event.id))
     setEditingEvent(null)
+  }
+
+  // Bulk-folds `memberIds` (other, already-existing events) into `groupId`, mirroring
+  // `anchorFields` onto them immediately — used by the edit modal's "link existing"
+  // picker and its "link all matching" button, both of which touch events other than
+  // the one currently open in the form, so they can't wait for that form's own Save.
+  function handleLinkGroup(groupId: string, anchorFields: Pick<ClassEvent, 'text' | 'labelId' | 'link' | 'linkBaseId'>, memberIds: string[]) {
+    if (!onClassEventsChange || memberIds.length === 0) return
+    onClassEventsChange(joinClassEventsToGroup(term.classEvents, groupId, anchorFields, memberIds))
   }
 
   function handleDragEnd(e: DragEndEvent) {
@@ -643,8 +692,11 @@ export function ScheduleGrid({ course, term, editable, blockCount = 2, fillHeigh
             isNew={editingEvent.isNew}
             classEventLabels={term.classEventLabels}
             meetingDaysCount={term.meetingDays.length}
+            linkBases={term.linkBases}
+            otherEvents={term.classEvents.filter((e) => e.id !== editingEvent.event.id)}
             onSave={handleSaveEvent}
             onDelete={editingEvent.isNew ? undefined : handleDeleteEvent}
+            onLinkGroup={handleLinkGroup}
             onClose={() => setEditingEvent(null)}
           />
         )}
@@ -751,9 +803,12 @@ function TopicEditModal({
         {!draft.isNoClass && (
           <LinkFieldEditor
             linkBases={linkBases}
-            titleLink={draft.titleLink}
-            titleLinkBaseId={draft.titleLinkBaseId}
-            onChange={patch}
+            url={draft.titleLink}
+            baseId={draft.titleLinkBaseId}
+            onChange={(p) => {
+              if ('url' in p) patch({ titleLink: p.url })
+              if ('baseId' in p) patch({ titleLinkBaseId: p.baseId })
+            }}
           />
         )}
 
@@ -785,31 +840,99 @@ function EventEditModal({
   isNew,
   classEventLabels,
   meetingDaysCount,
+  linkBases,
+  otherEvents,
   onSave,
   onDelete,
+  onLinkGroup,
   onClose,
 }: {
   event: ClassEvent
   isNew: boolean
   classEventLabels: ClassEventLabel[]
   meetingDaysCount: number
-  onSave: (event: ClassEvent, repeat?: { cadence: ClassEventRepeatCadence; count: number }) => void
+  linkBases: LinkBase[]
+  otherEvents: ClassEvent[]
+  onSave: (event: ClassEvent, repeat?: { cadence: ClassEventRepeatCadence; count: number }, newLinkedCounterpart?: ClassEvent) => void
   onDelete?: () => void
+  onLinkGroup: (groupId: string, anchorFields: Pick<ClassEvent, 'text' | 'labelId' | 'link' | 'linkBaseId'>, memberIds: string[]) => void
   onClose: () => void
 }) {
   const [draft, setDraft] = useState<ClassEvent>(event)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [repeatCadence, setRepeatCadence] = useState<ClassEventRepeatCadence>(meetingDaysCount > 1 ? 'week' : 'session')
   const [repeatCount, setRepeatCount] = useState(1)
+  // A counterpart created via "Create linked …event" below doesn't exist in
+  // `otherEvents` yet (it's only inserted into the term on save), so it's tracked
+  // here to both show it as a group member and hand it to onSave.
+  const [newLinkedCounterpart, setNewLinkedCounterpart] = useState<ClassEvent | null>(null)
 
   function patch(p: Partial<ClassEvent>) {
     setDraft((d) => ({ ...d, ...p }))
   }
 
+  function anchorFieldsOf(src: Pick<ClassEvent, 'text' | 'labelId' | 'link' | 'linkBaseId'>) {
+    return { text: src.text, labelId: src.labelId, link: src.link, linkBaseId: src.linkBaseId }
+  }
+
+  const inGroup = (a: Pick<ClassEvent, 'linkGroupId'>, b: Pick<ClassEvent, 'linkGroupId'>) => !!a.linkGroupId && a.linkGroupId === b.linkGroupId
+
+  // Other events already sharing this one's group — includes a just-created, not
+  // yet saved, counterpart.
+  const groupSiblings = [...otherEvents.filter((e) => inGroup(e, draft)), ...(newLinkedCounterpart && inGroup(newLinkedCounterpart, draft) ? [newLinkedCounterpart] : [])]
+
+  // Other events with the exact same text (how a repeated series is created) that
+  // aren't already in this group — candidates for the one-click "link all" button.
+  const matchingEvents = otherEvents.filter((e) => e.text.trim() === draft.text.trim() && e.id !== draft.id && !inGroup(e, draft))
+
+  // Any other event not already in this group — candidates for the manual picker.
+  const linkableEvents = otherEvents.filter((e) => !inGroup(e, draft))
+
+  function handleLinkExisting(partnerId: string) {
+    const partner = otherEvents.find((e) => e.id === partnerId)
+    if (!partner) return
+    setNewLinkedCounterpart(null)
+    const groupId = partner.linkGroupId ?? draft.linkGroupId ?? crypto.randomUUID()
+    const fields = anchorFieldsOf(partner)
+    onLinkGroup(groupId, fields, [partnerId])
+    patch({ linkGroupId: groupId, ...fields })
+  }
+
+  function handleLinkAllMatching() {
+    const groupId = draft.linkGroupId ?? crypto.randomUUID()
+    onLinkGroup(groupId, anchorFieldsOf(draft), matchingEvents.map((e) => e.id))
+    patch({ linkGroupId: groupId })
+  }
+
+  function handleCreateLinkedCounterpart() {
+    const groupId = draft.linkGroupId ?? crypto.randomUUID()
+    const counterpart: ClassEvent = {
+      id: crypto.randomUUID(),
+      date: draft.date,
+      text: draft.text,
+      labelId: draft.labelId,
+      phase: draft.phase === 'due' ? 'up' : 'due',
+      link: draft.link,
+      linkBaseId: draft.linkBaseId,
+      linkGroupId: groupId,
+    }
+    setNewLinkedCounterpart(counterpart)
+    patch({ linkGroupId: groupId })
+  }
+
+  function handleUnlink() {
+    setNewLinkedCounterpart(null)
+    patch({ linkGroupId: undefined })
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!draft.text.trim() || !draft.labelId) return
-    onSave({ ...draft, text: draft.text.trim() }, isNew ? { cadence: repeatCadence, count: repeatCount } : undefined)
+    onSave(
+      { ...draft, text: draft.text.trim() },
+      isNew ? { cadence: repeatCadence, count: repeatCount } : undefined,
+      newLinkedCounterpart ?? undefined,
+    )
   }
 
   const selectedLabel = resolveClassEventLabel(draft.labelId, classEventLabels)
@@ -888,6 +1011,61 @@ function EventEditModal({
         </div>
         {draft.hidden && (
           <p className="modal-hint">Kept and still editable here, but won't show on the published schedule.</p>
+        )}
+
+        <div className="sg-linked-event">
+          <span className="sg-linked-event-label">Linked events</span>
+          {groupSiblings.length > 0 && (
+            <div className="sg-linked-event-row">
+              <span className="sg-linked-event-partner">
+                mirrors text/label/link with {groupSiblings.length} event{groupSiblings.length === 1 ? '' : 's'}: "
+                {groupSiblings
+                  .map((e) => `${e.text || '(untitled)'} ${e.phase} · ${e.date}`)
+                  .join('", "')}
+                "
+              </span>
+              <button type="button" onClick={handleUnlink}>
+                Unlink this event
+              </button>
+            </div>
+          )}
+          <div className="sg-linked-event-row">
+            <select value="" onChange={(e) => e.target.value && handleLinkExisting(e.target.value)}>
+              <option value="">Link to existing event…</option>
+              {linkableEvents.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.text || '(untitled)'} {e.phase} · {e.date}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={handleCreateLinkedCounterpart}>
+              + Create linked {draft.phase === 'due' ? 'up' : 'due'} event
+            </button>
+          </div>
+          {matchingEvents.length > 0 && (
+            <div className="sg-linked-event-row">
+              <button type="button" onClick={handleLinkAllMatching}>
+                Link {matchingEvents.length} other "{draft.text.trim()}" event{matchingEvents.length === 1 ? '' : 's'} into this group
+              </button>
+            </div>
+          )}
+          <p className="modal-hint">Linked events always show the same text, label, and link; dates stay independent.</p>
+        </div>
+
+        <div className="sg-edit-title-label">
+          Link (optional)
+          <LinkFieldEditor
+            linkBases={linkBases}
+            url={draft.link}
+            baseId={draft.linkBaseId}
+            onChange={(p) => {
+              if ('url' in p) patch({ link: p.url })
+              if ('baseId' in p) patch({ linkBaseId: p.baseId })
+            }}
+          />
+        </div>
+        {(draft.link || draft.linkBaseId) && (
+          <p className="modal-hint">Makes the chip clickable (opens in a new tab) on the published schedule.</p>
         )}
 
         {isNew && (

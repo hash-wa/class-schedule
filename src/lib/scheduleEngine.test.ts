@@ -6,9 +6,11 @@ import {
   computeLectureNumberRanges,
   computeLectureNumbers,
   insertClassEvent,
+  joinClassEventsToGroup,
   remapClassEventDates,
   repeatClassEvent,
   resolveScheduleRange,
+  syncLinkedClassEventGroup,
 } from './scheduleEngine'
 
 function makeTopics(n: number): Topic[] {
@@ -215,6 +217,67 @@ describe('insertClassEvent — default placement puts "due" chips before "up" ch
     const events = [ev('a', '2026-01-19', 'up'), ev('b', '2026-01-21', 'due')]
     const result = insertClassEvent(events, ev('c', '2026-01-19', 'due'))
     expect(result.map((e) => e.id)).toEqual(['c', 'a', 'b'])
+  })
+})
+
+describe('syncLinkedClassEventGroup — keeps a linked group\'s text/label/link mirrored', () => {
+  function ev(id: string, overrides: Partial<ClassEvent> = {}): ClassEvent {
+    return { id, date: '2026-01-19', text: id, labelId: 'l1', phase: 'due', ...overrides }
+  }
+
+  it('mirrors text/labelId/link onto every other member of the group', () => {
+    const events = [
+      ev('a', { linkGroupId: 'g1' }),
+      ev('b', { text: 'old', labelId: 'l1', linkGroupId: 'g1' }),
+      ev('c', { text: 'old', labelId: 'l1', linkGroupId: 'g1' }),
+      ev('d', { linkGroupId: 'other-group' }),
+    ]
+    const saved = { ...events[0], text: 'H1', labelId: 'l2', link: 'https://example.com/h1', linkBaseId: 'ica' }
+    const result = syncLinkedClassEventGroup(events, saved)
+
+    for (const id of ['b', 'c']) {
+      const member = result.find((e) => e.id === id)!
+      expect(member.text).toBe('H1')
+      expect(member.labelId).toBe('l2')
+      expect(member.link).toBe('https://example.com/h1')
+      expect(member.linkBaseId).toBe('ica')
+    }
+    expect(result.find((e) => e.id === 'd')!.text).toBe('d') // a different group — untouched
+  })
+
+  it('is a no-op when the saved event has no group', () => {
+    const events = [ev('a'), ev('b')]
+    const result = syncLinkedClassEventGroup(events, events[0])
+    expect(result).toBe(events)
+  })
+
+  it('removing one member from the group (clearing its own linkGroupId) never touches the others', () => {
+    const events = [ev('a', { linkGroupId: 'g1' }), ev('b', { linkGroupId: 'g1' }), ev('c', { linkGroupId: 'g1' })]
+    const saved = { ...events[0], linkGroupId: undefined }
+    const result = syncLinkedClassEventGroup(events, saved)
+    expect(result).toBe(events) // saved has no group anymore, so nothing to mirror
+    expect(events.find((e) => e.id === 'b')!.linkGroupId).toBe('g1')
+    expect(events.find((e) => e.id === 'c')!.linkGroupId).toBe('g1')
+  })
+})
+
+describe('joinClassEventsToGroup — bulk-folds existing events into one group', () => {
+  function ev(id: string, overrides: Partial<ClassEvent> = {}): ClassEvent {
+    return { id, date: '2026-01-19', text: id, labelId: 'l1', phase: 'due', ...overrides }
+  }
+
+  it('stamps the group id and mirrors the anchor fields onto every listed member, leaving others untouched', () => {
+    const events = [ev('a'), ev('b'), ev('c'), ev('d')]
+    const result = joinClassEventsToGroup(events, 'g1', { text: 'Q1', labelId: 'l2', link: undefined, linkBaseId: undefined }, ['b', 'c'])
+
+    for (const id of ['b', 'c']) {
+      const member = result.find((e) => e.id === id)!
+      expect(member.text).toBe('Q1')
+      expect(member.labelId).toBe('l2')
+      expect(member.linkGroupId).toBe('g1')
+    }
+    expect(result.find((e) => e.id === 'a')!.linkGroupId).toBeUndefined()
+    expect(result.find((e) => e.id === 'd')!.linkGroupId).toBeUndefined()
   })
 })
 

@@ -64,6 +64,18 @@ export interface ClassEvent {
    * "due"/"up" word — the fill-vs-outline styling still reflects `phase` either way,
    * and the hover tooltip still spells it out. */
   hidePhaseWord?: boolean
+  /** Groups this event with any number of other class events sharing the same id
+   * (typically its "up"/"due" counterpart, or every occurrence of a repeated series)
+   * so `text`/`labelId`/`link`/`linkBaseId` stay mirrored across the whole group on
+   * every edit, while each member keeps its own `date`/`phase` independent. Plain
+   * shared-tag membership, not a pairwise pointer — removing one member from the
+   * group never requires touching any other member. */
+  linkGroupId?: string
+  /** A URL this event's chip opens (in a new tab) when clicked on the published,
+   * non-editable schedule — same scheme as `Topic.titleLink`/`titleLinkBaseId`: joined
+   * onto `linkBaseId`'s URL if set, else used as a standalone full URL. */
+  link?: string
+  linkBaseId?: string
 }
 
 /**

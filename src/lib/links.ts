@@ -7,12 +7,19 @@ export function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
 }
 
+/** Resolves a `url`/`baseId` pair to a full URL, joining it onto the referenced link
+ * base if one is set — the generic form behind both `resolveTopicLink` (Topic) and
+ * class events' own link field. */
+export function resolveLink(url: string | undefined, baseId: string | undefined, linkBases: LinkBase[]): string | undefined {
+  if (!url) return undefined
+  const base = linkBases.find((b) => b.id === baseId)
+  return base ? joinUrl(base.url, url) : url
+}
+
 /** Resolves a topic's link to a full URL, joining it onto its link base if one is set. */
 export function resolveTopicLink(
   topic: Pick<Topic, 'titleLink' | 'titleLinkBaseId'>,
   linkBases: LinkBase[],
 ): string | undefined {
-  if (!topic.titleLink) return undefined
-  const base = linkBases.find((b) => b.id === topic.titleLinkBaseId)
-  return base ? joinUrl(base.url, topic.titleLink) : topic.titleLink
+  return resolveLink(topic.titleLink, topic.titleLinkBaseId, linkBases)
 }

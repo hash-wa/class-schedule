@@ -301,6 +301,38 @@
   font-weight: 700;
 }
 
+.sg-linked-event {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sg-linked-event-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.sg-linked-event-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sg-linked-event-row select {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.sg-linked-event-partner {
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
 .sg-line1 {
   display: flex;
   align-items: baseline;
@@ -410,6 +442,17 @@ a.sg-title:hover .sg-title-text {
 
 .sg-class-event--editable {
   cursor: grab;
+}
+
+/* A chip rendered as an <a> (read-only view, link set) — drop the underline so it
+   still reads as a chip rather than a text link. */
+.sg-class-event--link {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.sg-class-event--link:hover {
+  filter: brightness(0.92);
 }
 
 .sg-class-event--drop-over {

@@ -150,6 +150,41 @@ export function insertClassEvent(events: ClassEvent[], newEvent: ClassEvent): Cl
   return [...events.slice(0, insertAt), newEvent, ...events.slice(insertAt)]
 }
 
+/**
+ * Keeps every class event sharing `saved.linkGroupId` mirroring `saved`'s own
+ * `text`/`labelId`/`link`/`linkBaseId` after `saved` is written into `events`. Group
+ * membership is just a shared id, not a pairwise pointer — there's no backlink to
+ * fix up, so removing `saved` from its group (clearing its own `linkGroupId`)
+ * elsewhere never needs this function to touch any other event.
+ */
+export function syncLinkedClassEventGroup(events: ClassEvent[], saved: ClassEvent): ClassEvent[] {
+  if (!saved.linkGroupId) return events
+
+  return events.map((ev) =>
+    ev.id !== saved.id && ev.linkGroupId === saved.linkGroupId
+      ? { ...ev, text: saved.text, labelId: saved.labelId, link: saved.link, linkBaseId: saved.linkBaseId }
+      : ev,
+  )
+}
+
+/**
+ * Stamps `groupId` onto every event in `events` whose id is in `memberIds`, and
+ * mirrors `anchorFields` onto them at the same time — the bulk counterpart to
+ * `syncLinkedClassEventGroup`, used to fold a batch of *other* existing events (e.g.
+ * every occurrence of a repeated series created before linking existed) into one
+ * group in a single step. Doesn't touch the anchor event itself — the caller is
+ * expected to already be saving that one through the normal single-event path.
+ */
+export function joinClassEventsToGroup(
+  events: ClassEvent[],
+  groupId: string,
+  anchorFields: Pick<ClassEvent, 'text' | 'labelId' | 'link' | 'linkBaseId'>,
+  memberIds: string[],
+): ClassEvent[] {
+  const ids = new Set(memberIds)
+  return events.map((ev) => (ids.has(ev.id) ? { ...ev, linkGroupId: groupId, ...anchorFields } : ev))
+}
+
 export type ClassEventRepeatCadence = 'session' | 'week'
 
 /**
