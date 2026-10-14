@@ -874,6 +874,9 @@ function EventEditModal({
   // `otherEvents` yet (it's only inserted into the term on save), so it's tracked
   // here to both show it as a group member and hand it to onSave.
   const [newLinkedCounterpart, setNewLinkedCounterpart] = useState<ClassEvent | null>(null)
+  // Checked ids in the "pick several, then link" checklist below — a batch
+  // alternative to linking one event at a time via the dropdown.
+  const [selectedToLink, setSelectedToLink] = useState<Set<string>>(new Set())
 
   function patch(p: Partial<ClassEvent>) {
     setDraft((d) => ({ ...d, ...p }))
@@ -902,6 +905,29 @@ function EventEditModal({
 
   // Any other event not already in this group — candidates for the manual picker.
   const linkableEvents = otherEvents.filter((e) => !inGroup(e, draft))
+  const sortedLinkableEvents = [...linkableEvents].sort(
+    (a, b) => a.date.localeCompare(b.date) || a.phase.localeCompare(b.phase) || a.text.localeCompare(b.text),
+  )
+  // Filtered through linkableEvents so a stale checked id (its event got linked some
+  // other way, e.g. via the dropdown) never inflates the count or gets resubmitted.
+  const selectedIds = linkableEvents.filter((e) => selectedToLink.has(e.id)).map((e) => e.id)
+
+  function toggleSelectedToLink(id: string) {
+    setSelectedToLink((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function handleLinkSelected() {
+    if (selectedIds.length === 0) return
+    const groupId = draft.linkGroupId ?? crypto.randomUUID()
+    onLinkGroup(groupId, anchorFieldsOf(draft), selectedIds)
+    patch({ linkGroupId: groupId })
+    setSelectedToLink(new Set())
+  }
 
   function handleLinkExisting(partnerId: string) {
     const partner = otherEvents.find((e) => e.id === partnerId)
@@ -1075,6 +1101,27 @@ function EventEditModal({
                 Link {matchingEvents.length} other "{draft.text.trim()}" event{matchingEvents.length === 1 ? '' : 's'} into this group
               </button>
             </div>
+          )}
+          {linkableEvents.length > 0 && (
+            <>
+              <div className="sg-linked-event-checklist">
+                {sortedLinkableEvents.map((e) => (
+                  <label key={e.id} className="sg-linked-event-checklist-item">
+                    <input type="checkbox" checked={selectedToLink.has(e.id)} onChange={() => toggleSelectedToLink(e.id)} />
+                    <span>
+                      {e.text || '(untitled)'} {e.phase} · {e.date}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <div className="sg-linked-event-row">
+                <button type="button" disabled={selectedIds.length === 0} onClick={handleLinkSelected}>
+                  {selectedIds.length === 0
+                    ? 'Link selected events into this group'
+                    : `Link ${selectedIds.length} selected event${selectedIds.length === 1 ? '' : 's'} into this group`}
+                </button>
+              </div>
+            </>
           )}
           <p className="modal-hint">
             Linked events always share label and link, and dates stay independent; title is only shared when "same

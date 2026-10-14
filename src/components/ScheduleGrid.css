@@ -333,6 +333,33 @@
   color: var(--text);
 }
 
+.sg-linked-event-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 140px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px;
+  background: var(--bg);
+}
+
+.sg-linked-event-checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--text);
+  padding: 3px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.sg-linked-event-checklist-item:hover {
+  background: var(--gradient-wash);
+}
+
 .sg-line1 {
   display: flex;
   align-items: baseline;
