@@ -220,12 +220,12 @@ describe('insertClassEvent — default placement puts "due" chips before "up" ch
   })
 })
 
-describe('syncLinkedClassEventGroup — keeps a linked group\'s text/label/link mirrored', () => {
+describe('syncLinkedClassEventGroup — keeps a linked group\'s label/link mirrored (and title too, when shared)', () => {
   function ev(id: string, overrides: Partial<ClassEvent> = {}): ClassEvent {
     return { id, date: '2026-01-19', text: id, labelId: 'l1', phase: 'due', ...overrides }
   }
 
-  it('mirrors text/labelId/link onto every other member of the group', () => {
+  it('mirrors labelId/link onto every other member of the group, but leaves text independent by default', () => {
     const events = [
       ev('a', { linkGroupId: 'g1' }),
       ev('b', { text: 'old', labelId: 'l1', linkGroupId: 'g1' }),
@@ -237,12 +237,22 @@ describe('syncLinkedClassEventGroup — keeps a linked group\'s text/label/link 
 
     for (const id of ['b', 'c']) {
       const member = result.find((e) => e.id === id)!
-      expect(member.text).toBe('H1')
+      expect(member.text).toBe('old') // not shared — independent title stays untouched
       expect(member.labelId).toBe('l2')
       expect(member.link).toBe('https://example.com/h1')
       expect(member.linkBaseId).toBe('ica')
     }
     expect(result.find((e) => e.id === 'd')!.text).toBe('d') // a different group — untouched
+  })
+
+  it('also mirrors text when the saved event has shareTitle on', () => {
+    const events = [ev('a', { linkGroupId: 'g1' }), ev('b', { text: 'old', linkGroupId: 'g1' })]
+    const saved = { ...events[0], text: 'H1', shareTitle: true }
+    const result = syncLinkedClassEventGroup(events, saved)
+
+    const member = result.find((e) => e.id === 'b')!
+    expect(member.text).toBe('H1')
+    expect(member.shareTitle).toBe(true)
   })
 
   it('is a no-op when the saved event has no group', () => {
@@ -266,18 +276,27 @@ describe('joinClassEventsToGroup — bulk-folds existing events into one group',
     return { id, date: '2026-01-19', text: id, labelId: 'l1', phase: 'due', ...overrides }
   }
 
-  it('stamps the group id and mirrors the anchor fields onto every listed member, leaving others untouched', () => {
+  it('stamps the group id and mirrors labelId/link onto every listed member, leaving title and others untouched', () => {
     const events = [ev('a'), ev('b'), ev('c'), ev('d')]
-    const result = joinClassEventsToGroup(events, 'g1', { text: 'Q1', labelId: 'l2', link: undefined, linkBaseId: undefined }, ['b', 'c'])
+    const result = joinClassEventsToGroup(events, 'g1', { text: 'Q1', labelId: 'l2', link: undefined, linkBaseId: undefined, shareTitle: false }, ['b', 'c'])
 
     for (const id of ['b', 'c']) {
       const member = result.find((e) => e.id === id)!
-      expect(member.text).toBe('Q1')
+      expect(member.text).toBe(id) // not shared — keeps its own original text
       expect(member.labelId).toBe('l2')
       expect(member.linkGroupId).toBe('g1')
     }
     expect(result.find((e) => e.id === 'a')!.linkGroupId).toBeUndefined()
     expect(result.find((e) => e.id === 'd')!.linkGroupId).toBeUndefined()
+  })
+
+  it('mirrors text too when shareTitle is on', () => {
+    const events = [ev('a'), ev('b'), ev('c')]
+    const result = joinClassEventsToGroup(events, 'g1', { text: 'Q1', labelId: 'l2', link: undefined, linkBaseId: undefined, shareTitle: true }, ['b', 'c'])
+
+    for (const id of ['b', 'c']) {
+      expect(result.find((e) => e.id === id)!.text).toBe('Q1')
+    }
   })
 })
 

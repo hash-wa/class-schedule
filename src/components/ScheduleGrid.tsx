@@ -553,7 +553,11 @@ export function ScheduleGrid({ course, term, editable, blockCount = 2, fillHeigh
   // `anchorFields` onto them immediately — used by the edit modal's "link existing"
   // picker and its "link all matching" button, both of which touch events other than
   // the one currently open in the form, so they can't wait for that form's own Save.
-  function handleLinkGroup(groupId: string, anchorFields: Pick<ClassEvent, 'text' | 'labelId' | 'link' | 'linkBaseId'>, memberIds: string[]) {
+  function handleLinkGroup(
+    groupId: string,
+    anchorFields: Pick<ClassEvent, 'text' | 'labelId' | 'link' | 'linkBaseId' | 'shareTitle'>,
+    memberIds: string[],
+  ) {
     if (!onClassEventsChange || memberIds.length === 0) return
     onClassEventsChange(joinClassEventsToGroup(term.classEvents, groupId, anchorFields, memberIds))
   }
@@ -855,7 +859,11 @@ function EventEditModal({
   otherEvents: ClassEvent[]
   onSave: (event: ClassEvent, repeat?: { cadence: ClassEventRepeatCadence; count: number }, newLinkedCounterpart?: ClassEvent) => void
   onDelete?: () => void
-  onLinkGroup: (groupId: string, anchorFields: Pick<ClassEvent, 'text' | 'labelId' | 'link' | 'linkBaseId'>, memberIds: string[]) => void
+  onLinkGroup: (
+    groupId: string,
+    anchorFields: Pick<ClassEvent, 'text' | 'labelId' | 'link' | 'linkBaseId' | 'shareTitle'>,
+    memberIds: string[],
+  ) => void
   onClose: () => void
 }) {
   const [draft, setDraft] = useState<ClassEvent>(event)
@@ -871,8 +879,15 @@ function EventEditModal({
     setDraft((d) => ({ ...d, ...p }))
   }
 
-  function anchorFieldsOf(src: Pick<ClassEvent, 'text' | 'labelId' | 'link' | 'linkBaseId'>) {
-    return { text: src.text, labelId: src.labelId, link: src.link, linkBaseId: src.linkBaseId }
+  function anchorFieldsOf(src: Pick<ClassEvent, 'text' | 'labelId' | 'link' | 'linkBaseId' | 'shareTitle'>) {
+    return { text: src.text, labelId: src.labelId, link: src.link, linkBaseId: src.linkBaseId, shareTitle: src.shareTitle }
+  }
+
+  /** Applies an anchor's fields to the currently-open draft — its `text` only when
+   * `shareTitle` is on, since by default a newly linked event keeps its own title. */
+  function patchFromAnchor(fields: ReturnType<typeof anchorFieldsOf>) {
+    const { text, shareTitle, ...rest } = fields
+    patch({ ...rest, shareTitle, ...(shareTitle ? { text } : {}) })
   }
 
   const inGroup = (a: Pick<ClassEvent, 'linkGroupId'>, b: Pick<ClassEvent, 'linkGroupId'>) => !!a.linkGroupId && a.linkGroupId === b.linkGroupId
@@ -895,7 +910,8 @@ function EventEditModal({
     const groupId = partner.linkGroupId ?? draft.linkGroupId ?? crypto.randomUUID()
     const fields = anchorFieldsOf(partner)
     onLinkGroup(groupId, fields, [partnerId])
-    patch({ linkGroupId: groupId, ...fields })
+    patch({ linkGroupId: groupId })
+    patchFromAnchor(fields)
   }
 
   function handleLinkAllMatching() {
@@ -915,6 +931,7 @@ function EventEditModal({
       link: draft.link,
       linkBaseId: draft.linkBaseId,
       linkGroupId: groupId,
+      shareTitle: draft.shareTitle,
     }
     setNewLinkedCounterpart(counterpart)
     patch({ linkGroupId: groupId })
@@ -922,7 +939,7 @@ function EventEditModal({
 
   function handleUnlink() {
     setNewLinkedCounterpart(null)
-    patch({ linkGroupId: undefined })
+    patch({ linkGroupId: undefined, shareTitle: undefined })
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -1016,18 +1033,28 @@ function EventEditModal({
         <div className="sg-linked-event">
           <span className="sg-linked-event-label">Linked events</span>
           {groupSiblings.length > 0 && (
-            <div className="sg-linked-event-row">
-              <span className="sg-linked-event-partner">
-                mirrors text/label/link with {groupSiblings.length} event{groupSiblings.length === 1 ? '' : 's'}: "
-                {groupSiblings
-                  .map((e) => `${e.text || '(untitled)'} ${e.phase} · ${e.date}`)
-                  .join('", "')}
-                "
-              </span>
-              <button type="button" onClick={handleUnlink}>
-                Unlink this event
-              </button>
-            </div>
+            <>
+              <div className="sg-linked-event-row">
+                <span className="sg-linked-event-partner">
+                  linked with {groupSiblings.length} event{groupSiblings.length === 1 ? '' : 's'}: "
+                  {groupSiblings
+                    .map((e) => `${e.text || '(untitled)'} ${e.phase} · ${e.date}`)
+                    .join('", "')}
+                  "
+                </span>
+                <button type="button" onClick={handleUnlink}>
+                  Unlink this event
+                </button>
+              </div>
+              <label className="sg-edit-checkbox">
+                <input
+                  type="checkbox"
+                  checked={!!draft.shareTitle}
+                  onChange={(e) => patch({ shareTitle: e.target.checked })}
+                />
+                Use the same title for every linked event
+              </label>
+            </>
           )}
           <div className="sg-linked-event-row">
             <select value="" onChange={(e) => e.target.value && handleLinkExisting(e.target.value)}>
@@ -1049,7 +1076,10 @@ function EventEditModal({
               </button>
             </div>
           )}
-          <p className="modal-hint">Linked events always show the same text, label, and link; dates stay independent.</p>
+          <p className="modal-hint">
+            Linked events always share label and link, and dates stay independent; title is only shared when "same
+            title" above is checked.
+          </p>
         </div>
 
         <div className="sg-edit-title-label">

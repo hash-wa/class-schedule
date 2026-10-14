@@ -66,11 +66,16 @@ export interface ClassEvent {
   hidePhaseWord?: boolean
   /** Groups this event with any number of other class events sharing the same id
    * (typically its "up"/"due" counterpart, or every occurrence of a repeated series)
-   * so `text`/`labelId`/`link`/`linkBaseId` stay mirrored across the whole group on
-   * every edit, while each member keeps its own `date`/`phase` independent. Plain
-   * shared-tag membership, not a pairwise pointer — removing one member from the
-   * group never requires touching any other member. */
+   * so `labelId`/`link`/`linkBaseId` stay mirrored across the whole group on every
+   * edit, while each member keeps its own `date`/`phase` independent. `text` is only
+   * mirrored too when `shareTitle` is on. Plain shared-tag membership, not a pairwise
+   * pointer — removing one member from the group never requires touching any other
+   * member. */
   linkGroupId?: string
+  /** When true, `text` is mirrored across this event's link group the same way
+   * `labelId`/`link`/`linkBaseId` always are. Off by default, so linked events keep
+   * independent titles unless explicitly set to share one. */
+  shareTitle?: boolean
   /** A URL this event's chip opens (in a new tab) when clicked on the published,
    * non-editable schedule — same scheme as `Topic.titleLink`/`titleLinkBaseId`: joined
    * onto `linkBaseId`'s URL if set, else used as a standalone full URL. */

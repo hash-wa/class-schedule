@@ -152,37 +152,50 @@ export function insertClassEvent(events: ClassEvent[], newEvent: ClassEvent): Cl
 
 /**
  * Keeps every class event sharing `saved.linkGroupId` mirroring `saved`'s own
- * `text`/`labelId`/`link`/`linkBaseId` after `saved` is written into `events`. Group
- * membership is just a shared id, not a pairwise pointer — there's no backlink to
- * fix up, so removing `saved` from its group (clearing its own `linkGroupId`)
- * elsewhere never needs this function to touch any other event.
+ * `labelId`/`link`/`linkBaseId`/`shareTitle` after `saved` is written into `events` —
+ * and its `text` too, but only when `saved.shareTitle` is on, since by default each
+ * linked event keeps its own independent title. Group membership is just a shared
+ * id, not a pairwise pointer — there's no backlink to fix up, so removing `saved`
+ * from its group (clearing its own `linkGroupId`) elsewhere never needs this
+ * function to touch any other event.
  */
 export function syncLinkedClassEventGroup(events: ClassEvent[], saved: ClassEvent): ClassEvent[] {
   if (!saved.linkGroupId) return events
 
   return events.map((ev) =>
     ev.id !== saved.id && ev.linkGroupId === saved.linkGroupId
-      ? { ...ev, text: saved.text, labelId: saved.labelId, link: saved.link, linkBaseId: saved.linkBaseId }
+      ? {
+          ...ev,
+          ...(saved.shareTitle ? { text: saved.text } : {}),
+          labelId: saved.labelId,
+          link: saved.link,
+          linkBaseId: saved.linkBaseId,
+          shareTitle: saved.shareTitle,
+        }
       : ev,
   )
 }
 
 /**
  * Stamps `groupId` onto every event in `events` whose id is in `memberIds`, and
- * mirrors `anchorFields` onto them at the same time — the bulk counterpart to
- * `syncLinkedClassEventGroup`, used to fold a batch of *other* existing events (e.g.
- * every occurrence of a repeated series created before linking existed) into one
- * group in a single step. Doesn't touch the anchor event itself — the caller is
+ * mirrors `anchorFields` onto them at the same time (its `text` only when
+ * `anchorFields.shareTitle` is on, same rule as `syncLinkedClassEventGroup`) — the
+ * bulk counterpart to that function, used to fold a batch of *other* existing events
+ * (e.g. every occurrence of a repeated series created before linking existed) into
+ * one group in a single step. Doesn't touch the anchor event itself — the caller is
  * expected to already be saving that one through the normal single-event path.
  */
 export function joinClassEventsToGroup(
   events: ClassEvent[],
   groupId: string,
-  anchorFields: Pick<ClassEvent, 'text' | 'labelId' | 'link' | 'linkBaseId'>,
+  anchorFields: Pick<ClassEvent, 'text' | 'labelId' | 'link' | 'linkBaseId' | 'shareTitle'>,
   memberIds: string[],
 ): ClassEvent[] {
   const ids = new Set(memberIds)
-  return events.map((ev) => (ids.has(ev.id) ? { ...ev, linkGroupId: groupId, ...anchorFields } : ev))
+  const { text, shareTitle, labelId, link, linkBaseId } = anchorFields
+  return events.map((ev) =>
+    ids.has(ev.id) ? { ...ev, linkGroupId: groupId, labelId, link, linkBaseId, shareTitle, ...(shareTitle ? { text } : {}) } : ev,
+  )
 }
 
 export type ClassEventRepeatCadence = 'session' | 'week'
